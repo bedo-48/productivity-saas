@@ -1,4 +1,5 @@
-import { createTask, getTasksByUser, deleteTaskById } from "../models/taskModel.js";
+import { createTask, getTasksByUser, deleteTaskById, toggleTaskCompleted } from "../models/taskModel.js";
+import { updateTaskCompleted } from "../models/taskModel.js";
 
 export const addTask = async (req, res) => {
   try {
@@ -18,17 +19,18 @@ export const getMyTasks = async (req, res) => {
     const tasks = await getTasksByUser(req.user.id);
     res.json(tasks);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch tasks" });
+    console.error("gettMyTasks error: ",err);
+    return res.status(500).json({ error: err.message });
   }
 
 };
 
 export const deleteTask = async (req, res) => {
   try {
+    const userId = req.user.id;
     const taskId = Number(req.params.id);
 
-    const deleted = await deleteTaskById(req.user.id, taskId);
+    const deleted = await deleteTaskById(userId, taskId);
 
     if (!deleted) {
       return res.status(404).json({ error: "Task not found" });
@@ -36,10 +38,26 @@ export const deleteTask = async (req, res) => {
 
     res.json({ message: "Task deleted" });
   } catch (err) {
-  console.error("DELETE /tasks/:id error:", err);
-  return res.status(500).json({
-    error: "Failed to delete task",
-    details: err?.message || String(err),
-  });
-}
+    console.error("DELETE ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export const patchTaskCompleted = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const taskId = Number(req.params.id);
+    const { completed } = req.body;
+
+    const updated = await updateTaskCompleted(userId, taskId, completed);
+
+    if (!updated) {
+      return res.status(404).json({ error: "Task not found" });
+    }
+
+    res.json(updated);
+  } catch (err) {
+    console.error("PATCH ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
 };

@@ -1,38 +1,35 @@
-import { useEffect, useState } from "react";
-import {login} from "../services/api";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {register} from "../services/api";
 import Signature from "./Signature";
 
-export default function Login() {
+export default function Register() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) navigate("/dashboard");
-  }, [navigate]);
-
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
-    setMessage("");
 
     try {
-      const data = await login(  email, password );
+      const data = await register ( name, email, password );
       localStorage.setItem("token", data.token);
       navigate("/dashboard");
-    } catch (err) {
-      setMessage("Invalid email or password.");
-      console.error(err);
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Registration failed.");
     } finally {
       setLoading(false);
     }
   };
+
+  const isValid = name.trim() && email.trim() && password.trim();
 
   return (
     <>
@@ -41,7 +38,7 @@ export default function Login() {
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        .login-root {
+        .reg-root {
           min-height: 100vh;
           background: #0e0e12;
           display: flex;
@@ -54,7 +51,7 @@ export default function Login() {
           overflow: hidden;
         }
 
-        .login-root::before {
+        .reg-root::before {
           content: '';
           position: fixed;
           top: -20%;
@@ -65,7 +62,7 @@ export default function Login() {
           pointer-events: none;
         }
 
-        .login-root::after {
+        .reg-root::after {
           content: '';
           position: fixed;
           bottom: -20%;
@@ -76,7 +73,7 @@ export default function Login() {
           pointer-events: none;
         }
 
-        .login-card {
+        .reg-card {
           width: 100%;
           max-width: 400px;
           background: #16161e;
@@ -94,7 +91,7 @@ export default function Login() {
           to   { opacity: 1; transform: translateY(0); }
         }
 
-        .login-logo {
+        .reg-logo {
           width: 44px;
           height: 44px;
           border-radius: 12px;
@@ -107,7 +104,7 @@ export default function Login() {
           box-shadow: 0 8px 20px rgba(99,102,241,0.3);
         }
 
-        .login-title {
+        .reg-title {
           font-family: 'Syne', sans-serif;
           font-size: 26px;
           font-weight: 800;
@@ -116,16 +113,14 @@ export default function Login() {
           margin-bottom: 6px;
         }
 
-        .login-subtitle {
+        .reg-subtitle {
           font-size: 13px;
           color: #6b6b7e;
           font-weight: 300;
           margin-bottom: 32px;
         }
 
-        .field {
-          margin-bottom: 16px;
-        }
+        .field { margin-bottom: 16px; }
 
         .field-label {
           display: block;
@@ -137,9 +132,7 @@ export default function Login() {
           margin-bottom: 8px;
         }
 
-        .field-wrap {
-          position: relative;
-        }
+        .field-wrap { position: relative; }
 
         .field-input {
           width: 100%;
@@ -161,9 +154,7 @@ export default function Login() {
           background: rgba(99,102,241,0.06);
         }
 
-        .field-input.has-toggle {
-          padding-right: 44px;
-        }
+        .field-input.has-toggle { padding-right: 44px; }
 
         .toggle-pw {
           position: absolute;
@@ -215,9 +206,7 @@ export default function Login() {
           animation: spin 0.7s linear infinite;
         }
 
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         .error-msg {
           margin-top: 16px;
@@ -258,15 +247,28 @@ export default function Login() {
         .footer-link:hover { color: #a5b4fc; }
       `}</style>
 
-      <div className="login-root">
-        <div className="login-card">
+      <div className="reg-root">
+        <div className="reg-card">
 
-          <div className="login-logo">✓</div>
-          <div className="login-title">Welcome back</div>
-          <div className="login-subtitle">Sign in to manage your tasks</div>
+          <div className="reg-logo">✦</div>
+          <div className="reg-title">Create account</div>
+          <div className="reg-subtitle">Start managing your tasks today</div>
 
-          <form onSubmit={handleLogin}>
-            {/* Email */}
+          <form onSubmit={handleRegister}>
+            <div className="field">
+              <label className="field-label">Name</label>
+              <div className="field-wrap">
+                <input
+                  className="field-input"
+                  placeholder="Obed Mavungu"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoComplete="name"
+                  required
+                />
+              </div>
+            </div>
+
             <div className="field">
               <label className="field-label">Email</label>
               <div className="field-wrap">
@@ -282,7 +284,6 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Password */}
             <div className="field">
               <label className="field-label">Password</label>
               <div className="field-wrap">
@@ -292,7 +293,7 @@ export default function Login() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   required
                 />
                 <button
@@ -306,28 +307,24 @@ export default function Login() {
               </div>
             </div>
 
-            <button
-              className="submit-btn"
-              type="submit"
-              disabled={loading || !email.trim() || !password.trim()}
-            >
+            <button className="submit-btn" type="submit" disabled={loading || !isValid}>
               {loading ? (
                 <>
                   <span className="spinner" />
-                  Signing in…
+                  Creating account…
                 </>
               ) : (
-                "Sign in"
+                "Create account"
               )}
             </button>
           </form>
 
-          {message && <div className="error-msg">⚠ {message}</div>}
+          {error && <div className="error-msg">⚠ {error}</div>}
 
           <div className="divider" />
           <p className="footer-text">
-            Don't have an account?{" "}
-            <a href="/register" className="footer-link">Create one</a>
+            Already have an account?{" "}
+            <a href="/login" className="footer-link">Sign in</a>
           </p>
 
         </div>

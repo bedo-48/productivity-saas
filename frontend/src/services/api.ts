@@ -1,43 +1,94 @@
-import axios from "axios";
-
-// ✅ création de l'instance axios
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
-});
+const API = import.meta.env.VITE_API_URL;
 
 
-// ==============================
-// ✅ REQUEST INTERCEPTOR
-// ajoute automatiquement le token
-// ==============================
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+export async function login(email: string, password: string) {
+  const res = await fetch(`${API}/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, password }),
+  });
 
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (!res.ok) {
+    throw new Error("Login failed");
   }
 
-  return config;
-});
+  return res.json();
+}
 
+export async function getTasks(token: string) {
+  const res = await fetch(`${API}/tasks`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
 
-// ==============================
-// ✅ RESPONSE INTERCEPTOR
-// logout automatique si token invalide
-// ==============================
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // token expiré ou invalide
-      localStorage.removeItem("token");
+  if (!res.ok) throw new Error("Failed to fetch tasks");
 
-      // redirection vers login
-      window.location.href = "/";
-    }
+  return res.json();
+}
 
-    return Promise.reject(error);
+export async function createTask(title: string, token: string) {
+  const res = await fetch(`${API}/tasks`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ title }),
+  });
+
+  if (!res.ok) throw new Error("Failed to create task");
+
+  return res.json();
+}
+
+export async function deleteTask(id: number, token: string) {
+  const res = await fetch(`${API}/tasks/${id}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to delete task: ${text}`);
   }
-);
+}
 
-export default api;
+export async function toggleTask(id: number, completed: boolean, token: string) {
+  const res = await fetch(`${API}/tasks/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ completed }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to update task: ${text}`);
+  }
+
+  return res.json();
+}
+
+
+export async function register(name: string, email: string, password: string) {
+  const res = await fetch(`${API}/auth/register`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name, email, password }),
+  });
+
+  if (!res.ok) {
+    throw new Error("Registration failed");
+  }
+
+  return res.json();
+}

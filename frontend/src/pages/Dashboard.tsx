@@ -10,6 +10,38 @@ type Task = {
   created_at?: string;
 };
 
+const floatingPhrases = [
+  // TOP ROW
+  { text: "Call your mom", x: "2%", y: "4%", size: 28, rotate: -12, opacity: 0.6, delay: 0 },
+  { text: "buy groceries", x: "18%", y: "2%", size: 20, rotate: 4, opacity: 0.35, delay: 0.2 },
+  { text: "reply to\nthat email", x: "54%", y: "3%", size: 19, rotate: -6, opacity: 0.4, delay: 0.5 },
+  { text: "take out\nthe trash", x: "75%", y: "2%", size: 22, rotate: 7, opacity: 0.38, delay: 0.3 },
+
+  // UPPER-MID
+  { text: "do your\nhomework", x: "1%", y: "20%", size: 32, rotate: 8, opacity: 0.25, delay: 0.9 },
+  { text: "water\nthe plants", x: "14%", y: "16%", size: 18, rotate: -4, opacity: 0.3, delay: 0.6 },
+  { text: "has your\ndog eaten?", x: "78%", y: "15%", size: 22, rotate: -7, opacity: 0.5, delay: 0.7 },
+  { text: "clean\nyour room", x: "64%", y: "18%", size: 17, rotate: 11, opacity: 0.3, delay: 1.2 },
+
+  // MID LEFT / MID RIGHT
+  { text: "stretch", x: "0%", y: "42%", size: 38, rotate: 13, opacity: 0.13, delay: 1.5 },
+  { text: "drink\nwater", x: "4%", y: "52%", size: 20, rotate: -8, opacity: 0.38, delay: 0.4 },
+  { text: "text your\ngirlfriend", x: "70%", y: "40%", size: 24, rotate: -9, opacity: 0.48, delay: 1.1 },
+  { text: "call your\ndad", x: "78%", y: "55%", size: 19, rotate: 5, opacity: 0.32, delay: 0.8 },
+
+  // LOWER-MID
+  { text: "pay your\nbills", x: "1%", y: "68%", size: 26, rotate: 9, opacity: 0.3, delay: 1.4 },
+  { text: "get some\nfresh air", x: "10%", y: "78%", size: 20, rotate: -5, opacity: 0.28, delay: 1.0 },
+  { text: "go to sleep", x: "68%", y: "70%", size: 22, rotate: -4, opacity: 0.42, delay: 0.7 },
+  { text: "charge\nyour phone", x: "76%", y: "82%", size: 18, rotate: 10, opacity: 0.35, delay: 1.3 },
+
+  // BOTTOM ROW
+  { text: "don't forget\nlunch", x: "2%", y: "88%", size: 22, rotate: -10, opacity: 0.3, delay: 0.6 },
+  { text: "call your mom", x: "28%", y: "93%", size: 17, rotate: 5, opacity: 0.22, delay: 1.0 },
+  { text: "floss", x: "58%", y: "90%", size: 30, rotate: -6, opacity: 0.18, delay: 1.6 },
+  { text: "take your\nmeds", x: "72%", y: "94%", size: 19, rotate: 8, opacity: 0.28, delay: 0.9 },
+];
+
 export default function Dashboard() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [title, setTitle] = useState("");
@@ -18,25 +50,16 @@ export default function Dashboard() {
 
   const navigate = useNavigate();
 
-  // Charger les tasks au démarrage
   useEffect(() => {
     const token = localStorage.getItem("token");
-
     if (!token) {
       navigate("/");
       return;
     }
-
     getTasks(token)
-      .then((data) => {
-        setTasks(data);
-      })
-      .catch((err) => {
-        console.error(err);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+      .then((data) => setTasks(data))
+      .catch((err) => console.error(err))
+      .finally(() => setLoading(false));
   }, [navigate]);
 
   const handleLogout = () => {
@@ -46,14 +69,10 @@ export default function Dashboard() {
 
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!title.trim()) return;
-
     const token = localStorage.getItem("token");
     if (!token) return;
-
     setAdding(true);
-
     try {
       const newTask = await createTask(title, token);
       setTasks((prev) => [newTask, ...prev]);
@@ -66,34 +85,28 @@ export default function Dashboard() {
   };
 
   const handleDelete = async (id: number) => {
-  const token = localStorage.getItem("token");
-  if (!token) return;
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    try {
+      await deleteTask(id, token);
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+    } catch (err) {
+      console.error("DELETE ERROR:", err);
+    }
+  };
 
-  try {
-    await deleteTask(id, token);
-
-    setTasks((prev) => prev.filter((t) => t.id !== id));
-  } catch (err) {
-    console.error("DELETE ERROR:", err);
-  }
-};
-
-const handleToggle = async (id: number, completed: boolean) => {
-  const token = localStorage.getItem("token");
-  if (!token) return;
-
-  try {
-    await toggleTask(id, !completed, token);
-
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === id ? { ...t, completed: !completed } : t
-      )
-    );
-  } catch (err) {
-    console.error("TOGGLE ERROR:", err);
-  }
-};
+  const handleToggle = async (id: number, completed: boolean) => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    try {
+      await toggleTask(id, !completed, token);
+      setTasks((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, completed: !completed } : t))
+      );
+    } catch (err) {
+      console.error("TOGGLE ERROR:", err);
+    }
+  };
 
   const completedCount = tasks.filter((t) => t.completed).length;
   const totalCount = tasks.length;
@@ -102,7 +115,7 @@ const handleToggle = async (id: number, completed: boolean) => {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Caveat:wght@400;500;600;700&display=swap');
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -141,6 +154,48 @@ const handleToggle = async (id: number, completed: boolean) => {
           pointer-events: none;
         }
 
+        /* ── Floating phrases ── */
+        .floating-phrase {
+          position: fixed;
+          font-family: 'Caveat', cursive;
+          line-height: 1.2;
+          white-space: pre-line;
+          pointer-events: none;
+          user-select: none;
+          z-index: 0;
+          animation: floatDrift 6s ease-in-out infinite alternate;
+        }
+
+        @keyframes floatDrift {
+          from { transform: var(--rotate) translateY(0px); }
+          to   { transform: var(--rotate) translateY(-8px); }
+        }
+
+        @keyframes fadeInPhrase {
+          from { opacity: 0; transform: var(--rotate) translateY(10px); }
+          to   { opacity: var(--opacity); transform: var(--rotate) translateY(0); }
+        }
+
+        .floating-phrase {
+          animation:
+            fadeInPhrase 1s cubic-bezier(0.22,1,0.36,1) both,
+            floatDrift 5s ease-in-out infinite alternate;
+          animation-delay: var(--delay), var(--delay);
+        }
+
+        @media (max-width: 700px) {
+          .floating-phrase { display: none; }
+        }
+
+        /* gradient text on some phrases */
+        .floating-phrase.gradient {
+          background: linear-gradient(135deg, #6366f1 0%, #ec4899 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        /* ── Card ── */
         .card {
           width: 100%;
           max-width: 460px;
@@ -224,9 +279,7 @@ const handleToggle = async (id: number, completed: boolean) => {
           margin-bottom: 24px;
         }
 
-        .progress-label span {
-          color: #9898b8;
-        }
+        .progress-label span { color: #9898b8; }
 
         .form-row {
           display: flex;
@@ -321,9 +374,7 @@ const handleToggle = async (id: number, completed: boolean) => {
           border-color: rgba(255,255,255,0.08);
         }
 
-        .task-item.done {
-          background: rgba(99,102,241,0.04);
-        }
+        .task-item.done { background: rgba(99,102,241,0.04); }
 
         .checkbox {
           width: 20px;
@@ -401,6 +452,30 @@ const handleToggle = async (id: number, completed: boolean) => {
       `}</style>
 
       <div className="dash-root">
+
+        {/* ── Scattered background phrases ── */}
+        {floatingPhrases.map((p, i) => (
+          <span
+            key={i}
+            className={`floating-phrase${i % 4 === 0 ? " gradient" : ""}`}
+            style={{
+              left: p.x,
+              top: p.y,
+              fontSize: `${p.size}px`,
+              "--rotate": `rotate(${p.rotate}deg)`,
+              "--opacity": p.opacity,
+              "--delay": `${p.delay}s`,
+              opacity: p.opacity,
+              transform: `rotate(${p.rotate}deg)`,
+              color: i % 4 === 0 ? undefined : i % 3 === 0 ? "#818cf8" : "#c8c8d8",
+              animationDelay: `${p.delay}s, ${p.delay}s`,
+            } as React.CSSProperties}
+          >
+            {p.text}
+          </span>
+        ))}
+
+        {/* ── Main card ── */}
         <div className="card">
           <div className="header">
             <div>

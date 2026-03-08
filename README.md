@@ -29,4 +29,4 @@ Database:
 
 ## Screenshot
 
-![Dashboard](./screenshots/Screenshot%202026-03-08%20172424.png)
+![Dashboard](./screenshots-old/dashboard.png)

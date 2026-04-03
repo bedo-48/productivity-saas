@@ -1,14 +1,31 @@
-import pool from "./db.js";
+import pkg from "pg";
+const { Client } = pkg;
 
 export async function runMigrations() {
-  console.log("Running migrations...");
+  // Use a dedicated client (not the shared pool) for migrations
+  const client = new Client(
+    process.env.DATABASE_URL
+      ? {
+          connectionString: process.env.DATABASE_URL,
+          ssl: { rejectUnauthorized: false },
+        }
+      : {
+          user: process.env.DB_USER,
+          host: process.env.DB_HOST,
+          database: process.env.DB_NAME,
+          password: process.env.DB_PASSWORD,
+          port: Number(process.env.DB_PORT) || 5432,
+        }
+  );
+
   try {
-    await pool.query(`
-      -- 1. Update users table
+    await client.connect();
+    console.log("Running migrations...");
+
+    await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 
-      -- 2. Email verification codes
       CREATE TABLE IF NOT EXISTS email_verification_codes (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -18,7 +35,6 @@ export async function runMigrations() {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
-      -- 3. Update tasks table
       ALTER TABLE tasks ADD COLUMN IF NOT EXISTS description TEXT;
       ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false;
       ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP;
@@ -26,7 +42,6 @@ export async function runMigrations() {
       ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date TIMESTAMP;
       ALTER TABLE tasks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
 
-      -- 4. Task shares
       CREATE TABLE IF NOT EXISTS task_shares (
         id SERIAL PRIMARY KEY,
         task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -36,7 +51,6 @@ export async function runMigrations() {
         UNIQUE(task_id, shared_with_user_id)
       );
 
-      -- 5. Activity log
       CREATE TABLE IF NOT EXISTS task_activity_log (
         id SERIAL PRIMARY KEY,
         task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -46,7 +60,6 @@ export async function runMigrations() {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
-      -- 6. Notifications
       CREATE TABLE IF NOT EXISTS notifications (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -57,9 +70,11 @@ export async function runMigrations() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
+
     console.log("Migrations completed successfully.");
   } catch (err) {
     console.error("Migration error:", err.message);
-    // Don't crash the server — log and continue
+  } finally {
+    await client.end();
   }
 }

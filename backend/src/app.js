@@ -11,6 +11,9 @@ import pool from "./config/db.js";
 
 const app = express();
 
+// ── Trust Render's proxy (required for rate-limit + correct IPs)
+app.set("trust proxy", 1);
+
 // ── Security headers
 app.use(helmet());
 

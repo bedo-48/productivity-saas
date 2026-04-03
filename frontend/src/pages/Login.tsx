@@ -23,11 +23,15 @@ export default function Login() {
     setMessage("");
 
     try {
-      const data = await login(  email, password );
+      const data = await login(email, password);
       localStorage.setItem("token", data.token);
-      navigate("/dashboard");
-    } catch (err) {
-      setMessage("Invalid email or password.");
+      if (data.requiresVerification) {
+        navigate("/verify-email");
+      } else {
+        navigate("/dashboard");
+      }
+    } catch (err: any) {
+      setMessage(err.message || "Invalid email or password.");
       console.error(err);
     } finally {
       setLoading(false);

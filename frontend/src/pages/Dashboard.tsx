@@ -1,66 +1,302 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { getTasks, createTask, deleteTask, toggleTask } from "../services/api";
-import Signature from "./Signature";
+import {
+  getTasks, createTask, deleteTask, toggleTask, archiveTask,
+  restoreTask, shareTask, getStats, getNeglected, getSuggestions,
+} from "../services/api";
 
-type Task = {
+// ── Types ────────────────────────────────────────────────────
+type Priority = "low" | "medium" | "high";
+type Tab = "active" | "archived" | "shared";
+
+interface Task {
   id: number;
   title: string;
+  description?: string;
   completed: boolean;
-  created_at?: string;
-};
+  archived: boolean;
+  priority: Priority;
+  due_date?: string;
+  created_at: string;
+  updated_at?: string;
+  archived_at?: string;
+  owner_name?: string;
+  owner_email?: string;
+  permission?: string;
+  collaborators?: { id: number; name: string; permission: string }[];
+}
 
-const floatingPhrases = [
-  // TOP ROW
-  { text: "Call your mom", x: "2%", y: "4%", size: 28, rotate: -12, opacity: 0.6, delay: 0 },
-  { text: "buy groceries", x: "18%", y: "2%", size: 20, rotate: 4, opacity: 0.35, delay: 0.2 },
-  { text: "reply to\nthat email", x: "54%", y: "3%", size: 19, rotate: -6, opacity: 0.4, delay: 0.5 },
-  { text: "take out\nthe trash", x: "75%", y: "2%", size: 22, rotate: 7, opacity: 0.38, delay: 0.3 },
+interface Stats {
+  active_tasks: string;
+  completed_tasks: string;
+  completed_this_week: string;
+  stale_tasks: string;
+  avg_completion_hours: string;
+}
 
-  // UPPER-MID
-  { text: "do your\nhomework", x: "1%", y: "20%", size: 32, rotate: 8, opacity: 0.25, delay: 0.9 },
-  { text: "water\nthe plants", x: "14%", y: "16%", size: 18, rotate: -4, opacity: 0.3, delay: 0.6 },
-  { text: "has your\ndog eaten?", x: "78%", y: "15%", size: 22, rotate: -7, opacity: 0.5, delay: 0.7 },
-  { text: "clean\nyour room", x: "64%", y: "18%", size: 17, rotate: 11, opacity: 0.3, delay: 1.2 },
+// ── Helpers ──────────────────────────────────────────────────
+function getAgeLevel(createdAt: string, completed: boolean): string {
+  if (completed) return "done";
+  const hours = (Date.now() - new Date(createdAt).getTime()) / 3600000;
+  if (hours < 24) return "fresh";
+  if (hours < 72) return "normal";
+  if (hours < 168) return "aging";
+  if (hours < 336) return "stale";
+  return "critical";
+}
 
-  // MID LEFT / MID RIGHT
-  { text: "stretch", x: "0%", y: "42%", size: 38, rotate: 13, opacity: 0.13, delay: 1.5 },
-  { text: "drink\nwater", x: "4%", y: "52%", size: 20, rotate: -8, opacity: 0.38, delay: 0.4 },
-  { text: "text your\ngirlfriend", x: "70%", y: "40%", size: 24, rotate: -9, opacity: 0.48, delay: 1.1 },
-  { text: "call your\ndad", x: "78%", y: "55%", size: 19, rotate: 5, opacity: 0.32, delay: 0.8 },
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const d = Math.floor(diff / 86400000);
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor(diff / 60000);
+  if (d > 0) return `${d}d ago`;
+  if (h > 0) return `${h}h ago`;
+  if (m > 0) return `${m}m ago`;
+  return "just now";
+}
 
-  // LOWER-MID
-  { text: "pay your\nbills", x: "1%", y: "68%", size: 26, rotate: 9, opacity: 0.3, delay: 1.4 },
-  { text: "get some\nfresh air", x: "10%", y: "78%", size: 20, rotate: -5, opacity: 0.28, delay: 1.0 },
-  { text: "go to sleep", x: "68%", y: "70%", size: 22, rotate: -4, opacity: 0.42, delay: 0.7 },
-  { text: "charge\nyour phone", x: "76%", y: "82%", size: 18, rotate: 10, opacity: 0.35, delay: 1.3 },
+function priorityColor(p: Priority) {
+  return p === "high" ? "#f87171" : p === "medium" ? "#fbbf24" : "#34d399";
+}
 
-  // BOTTOM ROW
-  { text: "don't forget\nlunch", x: "2%", y: "88%", size: 22, rotate: -10, opacity: 0.3, delay: 0.6 },
-  { text: "call your mom", x: "28%", y: "93%", size: 17, rotate: 5, opacity: 0.22, delay: 1.0 },
-  { text: "floss", x: "58%", y: "90%", size: 30, rotate: -6, opacity: 0.18, delay: 1.6 },
-  { text: "take your\nmeds", x: "72%", y: "94%", size: 19, rotate: 8, opacity: 0.28, delay: 0.9 },
-];
+// ── Share Modal ──────────────────────────────────────────────
+function ShareModal({ task, token, onClose }: { task: Task; token: string; onClose: () => void }) {
+  const [email, setEmail] = useState("");
+  const [permission, setPermission] = useState("view");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
 
+  const handleShare = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setErr(""); setMsg("");
+    try {
+      await shareTask(task.id, email, permission, token);
+      setMsg(`Shared with ${email}!`);
+      setEmail("");
+    } catch (error: any) {
+      setErr(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box">
+        <div className="modal-header">
+          <span>Share Task</span>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-task-name">"{task.title}"</div>
+        {msg && <div className="share-success">{msg}</div>}
+        {err && <div className="share-error">{err}</div>}
+        <form onSubmit={handleShare}>
+          <input
+            className="share-input"
+            type="email"
+            placeholder="Collaborator's email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <div className="perm-row">
+            <label className={`perm-btn ${permission === "view" ? "active" : ""}`}>
+              <input type="radio" value="view" checked={permission === "view"} onChange={() => setPermission("view")} style={{ display: "none" }} />
+              👁 View only
+            </label>
+            <label className={`perm-btn ${permission === "edit" ? "active" : ""}`}>
+              <input type="radio" value="edit" checked={permission === "edit"} onChange={() => setPermission("edit")} style={{ display: "none" }} />
+              ✏️ Can edit
+            </label>
+          </div>
+          <button className="share-submit" type="submit" disabled={loading || !email}>
+            {loading ? "Sharing..." : "Share"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Task Card ────────────────────────────────────────────────
+function TaskCard({
+  task, tab, token,
+  onToggle, onDelete, onArchive, onRestore, onShare,
+}: {
+  task: Task; tab: Tab; token: string;
+  onToggle: (id: number, completed: boolean) => void;
+  onDelete: (id: number) => void;
+  onArchive: (id: number) => void;
+  onRestore: (id: number) => void;
+  onShare: (task: Task) => void;
+}) {
+  const age = getAgeLevel(task.created_at, task.completed);
+  const ageBadges: Record<string, string> = {
+    fresh: "🟢 New", aging: "🟡 Getting old", stale: "🟠 Needs attention", critical: "🔴 Overdue!",
+  };
+
+  return (
+    <div className={`task-card age-${age}`}>
+      <div className="task-top">
+        {tab === "active" && (
+          <div
+            className={`checkbox ${task.completed ? "checked" : ""}`}
+            onClick={() => onToggle(task.id, task.completed)}
+          />
+        )}
+        <div className="task-body">
+          <span className={`task-title ${task.completed ? "done" : ""}`}>{task.title}</span>
+          {task.description && <span className="task-desc">{task.description}</span>}
+          <div className="task-meta">
+            <span className="priority-dot" style={{ background: priorityColor(task.priority) }} />
+            <span className="meta-text">{task.priority}</span>
+            <span className="meta-sep">·</span>
+            <span className="meta-text">{timeAgo(task.created_at)}</span>
+            {task.due_date && (
+              <>
+                <span className="meta-sep">·</span>
+                <span className="meta-text">Due {new Date(task.due_date).toLocaleDateString()}</span>
+              </>
+            )}
+            {tab === "shared" && task.owner_name && (
+              <>
+                <span className="meta-sep">·</span>
+                <span className="meta-text">By {task.owner_name}</span>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="task-actions">
+          {ageBadges[age] && <span className="age-badge">{ageBadges[age]}</span>}
+          {tab === "active" && (
+            <>
+              <button className="action-btn share-btn" title="Share" onClick={() => onShare(task)}>⇗</button>
+              <button className="action-btn" title="Archive" onClick={() => onArchive(task.id)}>📦</button>
+            </>
+          )}
+          {tab === "archived" && (
+            <button className="action-btn" title="Restore" onClick={() => onRestore(task.id)}>↩</button>
+          )}
+          {tab !== "shared" && (
+            <button className="action-btn delete-action" title="Delete" onClick={() => onDelete(task.id)}>✕</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Productivity Panel ───────────────────────────────────────
+function ProductivityPanel({
+  stats, neglected, suggestions, loading,
+}: {
+  stats: Stats | null; neglected: Task[]; suggestions: Task[]; loading: boolean;
+}) {
+  const [open, setOpen] = useState(true);
+  if (loading) return <div className="panel-loading">Loading insights...</div>;
+  if (!stats) return null;
+
+  const active = Number(stats.active_tasks);
+  const completed = Number(stats.completed_tasks);
+  const rate = active + completed > 0 ? Math.round((completed / (active + completed)) * 100) : 0;
+
+  return (
+    <div className="productivity-panel">
+      <button className="panel-toggle" onClick={() => setOpen((o) => !o)}>
+        📊 Productivity Insights {open ? "▲" : "▼"}
+      </button>
+      {open && (
+        <>
+          <div className="stats-grid">
+            <div className="stat-card"><div className="stat-num">{stats.active_tasks}</div><div className="stat-label">Active</div></div>
+            <div className="stat-card"><div className="stat-num">{stats.completed_this_week}</div><div className="stat-label">Done this week</div></div>
+            <div className="stat-card"><div className="stat-num">{rate}%</div><div className="stat-label">Completion rate</div></div>
+            <div className="stat-card"><div className="stat-num">{Math.round(Number(stats.avg_completion_hours))}h</div><div className="stat-label">Avg. completion</div></div>
+          </div>
+
+          {neglected.length > 0 && (
+            <div className="insight-block warning">
+              <div className="insight-title">⚠️ Needs attention — {neglected.length} stale task{neglected.length > 1 ? "s" : ""}</div>
+              <ul className="insight-list">
+                {neglected.map((t) => (
+                  <li key={t.id}>{t.title} <span className="insight-age">({timeAgo(t.created_at)})</span></li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {suggestions.length > 0 && (
+            <div className="insight-block info">
+              <div className="insight-title">💡 Suggested focus for today</div>
+              <ol className="insight-list">
+                {suggestions.map((t) => (
+                  <li key={t.id}>
+                    {t.title}
+                    <span className="priority-dot small" style={{ background: priorityColor(t.priority), marginLeft: 6 }} />
+                    {t.due_date && <span className="insight-age"> · due {new Date(t.due_date).toLocaleDateString()}</span>}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Main Dashboard ───────────────────────────────────────────
 export default function Dashboard() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [tab, setTab] = useState<Tab>("active");
   const [title, setTitle] = useState("");
+  const [priority, setPriority] = useState<Priority>("medium");
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
-
+  const [shareTarget, setShareTarget] = useState<Task | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [neglected, setNeglected] = useState<Task[]>([]);
+  const [suggestions, setSuggestions] = useState<Task[]>([]);
+  const [insightsLoading, setInsightsLoading] = useState(true);
   const navigate = useNavigate();
+  const token = localStorage.getItem("token") || "";
+
+  const loadTasks = useCallback(async (t: Tab) => {
+    setLoading(true);
+    try {
+      const data = await getTasks(token, t);
+      setTasks(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const loadInsights = useCallback(async () => {
+    setInsightsLoading(true);
+    try {
+      const [s, n, sg] = await Promise.all([getStats(token), getNeglected(token), getSuggestions(token)]);
+      setStats(s);
+      setNeglected(n);
+      setSuggestions(sg);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setInsightsLoading(false);
+    }
+  }, [token]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      navigate("/");
-      return;
-    }
-    getTasks(token)
-      .then((data) => setTasks(data))
-      .catch((err) => console.error(err))
-      .finally(() => setLoading(false));
-  }, [navigate]);
+    if (!token) { navigate("/"); return; }
+    loadInsights();
+  }, []);
+
+  useEffect(() => {
+    loadTasks(tab);
+  }, [tab]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -70,486 +306,399 @@ export default function Dashboard() {
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-    const token = localStorage.getItem("token");
-    if (!token) return;
     setAdding(true);
     try {
-      const newTask = await createTask(title, token);
+      const newTask = await createTask(title, token, { priority });
       setTasks((prev) => [newTask, ...prev]);
       setTitle("");
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-    try {
-      await deleteTask(id, token);
-      setTasks((prev) => prev.filter((t) => t.id !== id));
-    } catch (err) {
-      console.error("DELETE ERROR:", err);
-    }
+      loadInsights();
+    } catch (err) { console.error(err); }
+    finally { setAdding(false); }
   };
 
   const handleToggle = async (id: number, completed: boolean) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
     try {
       await toggleTask(id, !completed, token);
-      setTasks((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, completed: !completed } : t))
-      );
-    } catch (err) {
-      console.error("TOGGLE ERROR:", err);
-    }
+      setTasks((prev) => prev.map((t) => t.id === id ? { ...t, completed: !completed } : t));
+      loadInsights();
+    } catch (err) { console.error(err); }
   };
 
-  const completedCount = tasks.filter((t) => t.completed).length;
-  const totalCount = tasks.length;
-  const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+  const handleDelete = async (id: number) => {
+    try {
+      await deleteTask(id, token);
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      loadInsights();
+    } catch (err) { console.error(err); }
+  };
+
+  const handleArchive = async (id: number) => {
+    try {
+      await archiveTask(id, token);
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      loadInsights();
+    } catch (err) { console.error(err); }
+  };
+
+  const handleRestore = async (id: number) => {
+    try {
+      await restoreTask(id, token);
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      loadInsights();
+    } catch (err) { console.error(err); }
+  };
+
+  const activeTasks = tasks.filter((t) => !t.completed);
+  const doneTasks = tasks.filter((t) => t.completed);
+  const progress = tasks.length > 0 ? (doneTasks.length / tasks.length) * 100 : 0;
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Caveat:wght@400;500;600;700&display=swap');
-
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0e0e12; }
 
         .dash-root {
-          min-height: 100vh;
-          background: #0e0e12;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          align-items: center;
-          font-family: 'DM Sans', sans-serif;
-          padding: 24px;
-          position: relative;
-          overflow: hidden;
+          min-height: 100vh; background: #0e0e12; font-family: 'DM Sans', sans-serif;
+          display: flex; flex-direction: column; align-items: center; padding: 24px 16px 48px;
         }
-
         .dash-root::before {
-          content: '';
-          position: fixed;
-          top: -30%;
-          left: -20%;
-          width: 600px;
-          height: 600px;
-          background: radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%);
-          pointer-events: none;
+          content:''; position:fixed; top:-30%; left:-20%; width:600px; height:600px;
+          background:radial-gradient(circle,rgba(99,102,241,.15) 0%,transparent 70%);
+          pointer-events:none; z-index:0;
         }
 
-        .dash-root::after {
-          content: '';
-          position: fixed;
-          bottom: -20%;
-          right: -10%;
-          width: 500px;
-          height: 500px;
-          background: radial-gradient(circle, rgba(236,72,153,0.10) 0%, transparent 70%);
-          pointer-events: none;
+        /* ── Topbar ── */
+        .topbar {
+          width: 100%; max-width: 720px; display: flex; align-items: center;
+          justify-content: space-between; margin-bottom: 24px; position: relative; z-index: 1;
         }
-
-        /* ── Floating phrases ── */
-        .floating-phrase {
-          position: fixed;
-          font-family: 'Caveat', cursive;
-          line-height: 1.2;
-          white-space: pre-line;
-          pointer-events: none;
-          user-select: none;
-          z-index: 0;
-          animation: floatDrift 6s ease-in-out infinite alternate;
+        .topbar-logo { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; color: #fff; }
+        .topbar-logo span { color: #6366f1; }
+        .logout-btn {
+          background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+          color: #9898a8; font-family: 'DM Sans', sans-serif; font-size: 13px;
+          padding: 7px 14px; border-radius: 8px; cursor: pointer; transition: all .2s;
         }
+        .logout-btn:hover { background: rgba(239,68,68,.1); border-color: rgba(239,68,68,.3); color: #f87171; }
 
-        @keyframes floatDrift {
-          from { transform: var(--rotate) translateY(0px); }
-          to   { transform: var(--rotate) translateY(-8px); }
+        /* ── Productivity Panel ── */
+        .productivity-panel {
+          width: 100%; max-width: 720px; background: #16161e;
+          border: 1px solid rgba(255,255,255,0.07); border-radius: 16px;
+          padding: 20px; margin-bottom: 20px; position: relative; z-index: 1;
         }
-
-        @keyframes fadeInPhrase {
-          from { opacity: 0; transform: var(--rotate) translateY(10px); }
-          to   { opacity: var(--opacity); transform: var(--rotate) translateY(0); }
+        .panel-toggle {
+          background: none; border: none; color: #9898a8; font-size: 13px; font-weight: 600;
+          cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 0;
+          font-family: 'DM Sans', sans-serif; transition: color .2s; width: 100%;
         }
-
-        .floating-phrase {
-          animation:
-            fadeInPhrase 1s cubic-bezier(0.22,1,0.36,1) both,
-            floatDrift 5s ease-in-out infinite alternate;
-          animation-delay: var(--delay), var(--delay);
+        .panel-toggle:hover { color: #fff; }
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+        @media (max-width: 500px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+        .stat-card {
+          background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+          border-radius: 12px; padding: 14px; text-align: center;
         }
-
-        @media (max-width: 700px) {
-          .floating-phrase { display: none; }
+        .stat-num { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; color: #fff; }
+        .stat-label { font-size: 11px; color: #55556a; margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
+        .insight-block {
+          border-radius: 10px; padding: 14px 16px; margin-top: 14px; border-left: 3px solid;
         }
+        .insight-block.warning { background: rgba(251,191,36,.05); border-color: #fbbf24; }
+        .insight-block.info { background: rgba(99,102,241,.05); border-color: #6366f1; }
+        .insight-title { font-size: 13px; font-weight: 600; color: #c8c8d8; margin-bottom: 8px; }
+        .insight-list { padding-left: 18px; color: #9898a8; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+        .insight-age { color: #55556a; }
+        .panel-loading { width: 100%; max-width: 720px; color: #45455a; font-size: 13px; margin-bottom: 20px; text-align: center; }
 
-        /* gradient text on some phrases */
-        .floating-phrase.gradient {
-          background: linear-gradient(135deg, #6366f1 0%, #ec4899 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
-
-        /* ── Card ── */
+        /* ── Main card ── */
         .card {
-          width: 100%;
-          max-width: 460px;
-          background: #16161e;
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 20px;
-          padding: 32px;
-          position: relative;
-          z-index: 1;
-          box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.08);
-          animation: slideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+          width: 100%; max-width: 720px; background: #16161e;
+          border: 1px solid rgba(255,255,255,0.07); border-radius: 20px;
+          padding: 28px 28px 24px; position: relative; z-index: 1;
+          box-shadow: 0 24px 60px rgba(0,0,0,.5);
+          animation: slideUp .4s cubic-bezier(.22,1,.36,1);
         }
-
         @keyframes slideUp {
           from { opacity: 0; transform: translateY(20px); }
           to   { opacity: 1; transform: translateY(0); }
         }
 
-        .header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          margin-bottom: 28px;
+        /* ── Tabs ── */
+        .tabs { display: flex; gap: 6px; margin-bottom: 24px; }
+        .tab-btn {
+          padding: 7px 16px; border-radius: 99px; border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(255,255,255,0.03); color: #6b6b7e;
+          font-family: 'DM Sans', sans-serif; font-size: 13px; cursor: pointer; transition: all .2s;
+        }
+        .tab-btn.active {
+          background: rgba(99,102,241,.15); border-color: rgba(99,102,241,.4); color: #a5b4fc;
+        }
+        .tab-btn:hover:not(.active) { background: rgba(255,255,255,.05); color: #c8c8d8; }
+        .tab-count {
+          display: inline-flex; align-items: center; justify-content: center;
+          background: rgba(99,102,241,.2); color: #818cf8; border-radius: 99px;
+          font-size: 10px; font-weight: 700; padding: 1px 6px; margin-left: 6px;
         }
 
-        .header-title {
-          font-family: 'Syne', sans-serif;
-          font-size: 26px;
-          font-weight: 800;
-          color: #fff;
-          letter-spacing: -0.5px;
-          line-height: 1;
-        }
-
-        .header-subtitle {
-          font-size: 13px;
-          color: #6b6b7e;
-          margin-top: 5px;
-          font-weight: 300;
-        }
-
-        .logout-btn {
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.08);
-          color: #9898a8;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 13px;
-          padding: 7px 14px;
-          border-radius: 8px;
-          cursor: pointer;
-          transition: all 0.2s;
-          white-space: nowrap;
-        }
-
-        .logout-btn:hover {
-          background: rgba(239,68,68,0.1);
-          border-color: rgba(239,68,68,0.3);
-          color: #f87171;
-        }
-
+        /* ── Progress ── */
         .progress-bar-wrap {
-          background: rgba(255,255,255,0.05);
-          border-radius: 99px;
-          height: 5px;
-          margin-bottom: 28px;
-          overflow: hidden;
+          background: rgba(255,255,255,.05); border-radius: 99px; height: 4px;
+          margin-bottom: 6px; overflow: hidden;
         }
-
         .progress-bar-fill {
-          height: 100%;
-          border-radius: 99px;
+          height: 100%; border-radius: 99px;
           background: linear-gradient(90deg, #6366f1, #ec4899);
-          transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+          transition: width .5s cubic-bezier(.22,1,.36,1);
         }
-
-        .progress-label {
-          font-size: 12px;
-          color: #55556a;
-          text-align: right;
-          margin-top: 6px;
-          margin-bottom: 24px;
-        }
-
+        .progress-label { font-size: 11px; color: #45455a; text-align: right; margin-bottom: 20px; }
         .progress-label span { color: #9898b8; }
 
-        .form-row {
-          display: flex;
-          gap: 10px;
-          margin-bottom: 28px;
-        }
-
+        /* ── Form ── */
+        .form-row { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
         .task-input {
-          flex: 1;
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 10px;
-          padding: 11px 14px;
-          color: #e8e8f0;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 14px;
-          outline: none;
-          transition: border-color 0.2s, background 0.2s;
+          flex: 1; min-width: 180px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+          border-radius: 10px; padding: 11px 14px; color: #e8e8f0;
+          font-family: 'DM Sans', sans-serif; font-size: 14px; outline: none; transition: all .2s;
         }
-
         .task-input::placeholder { color: #45455a; }
-
-        .task-input:focus {
-          border-color: rgba(99,102,241,0.5);
-          background: rgba(99,102,241,0.06);
+        .task-input:focus { border-color: rgba(99,102,241,.5); background: rgba(99,102,241,.06); }
+        .priority-select {
+          background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+          border-radius: 10px; padding: 11px 12px; color: #9898a8;
+          font-family: 'DM Sans', sans-serif; font-size: 13px; outline: none; cursor: pointer;
         }
-
+        .priority-select option { background: #16161e; }
         .add-btn {
-          padding: 11px 18px;
-          border-radius: 10px;
-          border: none;
-          background: linear-gradient(135deg, #6366f1, #818cf8);
-          color: white;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: opacity 0.2s, transform 0.15s;
-          white-space: nowrap;
-          box-shadow: 0 4px 16px rgba(99,102,241,0.3);
+          padding: 11px 18px; border-radius: 10px; border: none;
+          background: linear-gradient(135deg, #6366f1, #818cf8); color: white;
+          font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500;
+          cursor: pointer; transition: opacity .2s, transform .15s; white-space: nowrap;
+          box-shadow: 0 4px 16px rgba(99,102,241,.3);
         }
+        .add-btn:hover:not(:disabled) { opacity: .9; transform: translateY(-1px); }
+        .add-btn:disabled { opacity: .5; cursor: not-allowed; }
 
-        .add-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
-        .add-btn:active:not(:disabled) { transform: translateY(0); }
-        .add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        .divider {
-          height: 1px;
-          background: rgba(255,255,255,0.05);
-          margin-bottom: 20px;
+        /* ── Task cards ── */
+        .task-list { display: flex; flex-direction: column; gap: 8px; }
+        .task-card {
+          border-radius: 12px; padding: 14px 16px;
+          background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.05);
+          border-left: 4px solid transparent; transition: all .25s;
+          animation: fadeIn .2s ease;
         }
-
-        .empty-state {
-          text-align: center;
-          padding: 32px 0;
-          color: #45455a;
-          font-size: 14px;
-        }
-
-        .empty-icon {
-          font-size: 32px;
-          margin-bottom: 10px;
-          display: block;
-          opacity: 0.4;
-        }
-
-        .task-list {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .task-item {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 12px 14px;
-          border-radius: 10px;
-          background: rgba(255,255,255,0.02);
-          border: 1px solid rgba(255,255,255,0.04);
-          transition: background 0.2s, border-color 0.2s;
-          animation: fadeIn 0.25s ease;
-        }
-
         @keyframes fadeIn {
           from { opacity: 0; transform: translateX(-6px); }
           to   { opacity: 1; transform: translateX(0); }
         }
-
-        .task-item:hover {
-          background: rgba(255,255,255,0.04);
-          border-color: rgba(255,255,255,0.08);
+        .task-card:hover { background: rgba(255,255,255,.04); }
+        .task-card.age-fresh { border-left-color: #10b981; }
+        .task-card.age-normal { border-left-color: #6b7280; }
+        .task-card.age-aging  { border-left-color: #f59e0b; }
+        .task-card.age-stale  { border-left-color: #f97316; }
+        .task-card.age-critical {
+          border-left-color: #ef4444;
+          animation: fadeIn .2s ease, pulse-red 2s 1s infinite;
         }
+        @keyframes pulse-red {
+          0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,.2); }
+          50%      { box-shadow: 0 0 0 6px rgba(239,68,68,.0); }
+        }
+        .task-card.age-done { border-left-color: rgba(99,102,241,.3); opacity: .65; }
 
-        .task-item.done { background: rgba(99,102,241,0.04); }
-
+        .task-top { display: flex; align-items: flex-start; gap: 12px; }
         .checkbox {
-          width: 20px;
-          height: 20px;
-          border-radius: 6px;
-          border: 1.5px solid rgba(255,255,255,0.15);
-          flex-shrink: 0;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s;
-          background: transparent;
+          width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid rgba(255,255,255,.15);
+          flex-shrink: 0; cursor: pointer; display: flex; align-items: center; justify-content: center;
+          transition: all .2s; background: transparent; margin-top: 2px;
         }
-
         .checkbox.checked {
-          background: linear-gradient(135deg, #6366f1, #818cf8);
-          border-color: transparent;
+          background: linear-gradient(135deg, #6366f1, #818cf8); border-color: transparent;
         }
-
         .checkbox.checked::after {
-          content: '';
-          width: 5px;
-          height: 9px;
-          border: 2px solid white;
-          border-top: none;
-          border-left: none;
-          transform: rotate(45deg) translateY(-1px);
-          display: block;
+          content: ''; width: 5px; height: 9px; border: 2px solid white;
+          border-top: none; border-left: none; transform: rotate(45deg) translateY(-1px); display: block;
         }
+        .task-body { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+        .task-title { font-size: 14px; color: #c8c8d8; line-height: 1.4; transition: all .2s; }
+        .task-title.done { text-decoration: line-through; color: #45455a; }
+        .task-desc { font-size: 12px; color: #55556a; }
+        .task-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .priority-dot {
+          width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+        }
+        .priority-dot.small { width: 6px; height: 6px; display: inline-block; border-radius: 50%; vertical-align: middle; }
+        .meta-text { font-size: 11px; color: #45455a; }
+        .meta-sep { color: #2a2a38; font-size: 11px; }
 
-        .task-label {
-          flex: 1;
-          font-size: 14px;
-          color: #c8c8d8;
-          cursor: pointer;
-          transition: all 0.2s;
-          line-height: 1.4;
+        .task-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+        .age-badge { font-size: 10px; color: #9898a8; white-space: nowrap; margin-right: 4px; }
+        .action-btn {
+          background: none; border: none; color: #45455a; cursor: pointer;
+          font-size: 14px; padding: 4px 6px; border-radius: 6px; transition: all .2s; line-height: 1;
         }
+        .action-btn:hover { color: #c8c8d8; background: rgba(255,255,255,.06); }
+        .share-btn:hover { color: #818cf8; background: rgba(99,102,241,.1); }
+        .delete-action:hover { color: #f87171; background: rgba(239,68,68,.1); }
 
-        .task-label.done {
-          text-decoration: line-through;
-          color: #45455a;
-        }
+        .divider { height: 1px; background: rgba(255,255,255,.05); margin-bottom: 20px; }
+        .empty-state { text-align: center; padding: 40px 0; color: #45455a; font-size: 14px; }
+        .empty-icon { font-size: 36px; margin-bottom: 10px; display: block; opacity: .4; }
+        .skeleton { background: rgba(255,255,255,.04); border-radius: 10px; height: 56px; animation: pulse 1.5s ease-in-out infinite; }
+        @keyframes pulse { 0%,100% { opacity: .4; } 50% { opacity: .8; } }
 
-        .delete-btn {
-          background: none;
-          border: none;
-          color: #45455a;
-          cursor: pointer;
-          font-size: 16px;
-          padding: 2px 6px;
-          border-radius: 6px;
-          transition: all 0.2s;
-          line-height: 1;
-          flex-shrink: 0;
+        /* ── Modal ── */
+        .modal-overlay {
+          position: fixed; inset: 0; background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+          z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px;
         }
-
-        .delete-btn:hover {
-          color: #f87171;
-          background: rgba(239,68,68,0.1);
+        .modal-box {
+          background: #1a1a24; border: 1px solid rgba(255,255,255,.1);
+          border-radius: 16px; padding: 28px; width: 100%; max-width: 380px;
+          animation: slideUp .3s ease;
         }
-
-        .skeleton {
-          background: rgba(255,255,255,0.04);
-          border-radius: 10px;
-          height: 46px;
-          animation: pulse 1.5s ease-in-out infinite;
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: #fff; font-weight: 600; font-size: 15px; }
+        .modal-close { background: none; border: none; color: #6b6b7e; cursor: pointer; font-size: 16px; transition: color .2s; }
+        .modal-close:hover { color: #fff; }
+        .modal-task-name { font-size: 13px; color: #6b6b7e; margin-bottom: 20px; }
+        .share-input {
+          width: 100%; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+          border-radius: 10px; padding: 11px 14px; color: #e8e8f0; font-size: 14px;
+          outline: none; margin-bottom: 12px; font-family: 'DM Sans', sans-serif;
         }
-
-        @keyframes pulse {
-          0%, 100% { opacity: 0.4; }
-          50%       { opacity: 0.8; }
+        .perm-row { display: flex; gap: 8px; margin-bottom: 16px; }
+        .perm-btn {
+          flex: 1; padding: 9px; border: 1px solid rgba(255,255,255,.08);
+          border-radius: 8px; text-align: center; font-size: 13px; color: #6b6b7e;
+          cursor: pointer; transition: all .2s; background: rgba(255,255,255,.02);
         }
+        .perm-btn.active { border-color: rgba(99,102,241,.5); background: rgba(99,102,241,.1); color: #a5b4fc; }
+        .share-submit {
+          width: 100%; padding: 12px; border-radius: 10px; border: none;
+          background: linear-gradient(135deg, #6366f1, #818cf8); color: #fff;
+          font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .2s;
+          font-family: 'DM Sans', sans-serif;
+        }
+        .share-submit:disabled { opacity: .5; cursor: not-allowed; }
+        .share-success { color: #34d399; font-size: 13px; margin-bottom: 12px; }
+        .share-error { color: #f87171; font-size: 13px; margin-bottom: 12px; }
       `}</style>
 
       <div className="dash-root">
+        {/* Topbar */}
+        <div className="topbar">
+          <div className="topbar-logo">Task<span>Flow</span></div>
+          <button className="logout-btn" onClick={handleLogout}>Sign out</button>
+        </div>
 
-        {/* ── Scattered background phrases ── */}
-        {floatingPhrases.map((p, i) => (
-          <span
-            key={i}
-            className={`floating-phrase${i % 4 === 0 ? " gradient" : ""}`}
-            style={{
-              left: p.x,
-              top: p.y,
-              fontSize: `${p.size}px`,
-              "--rotate": `rotate(${p.rotate}deg)`,
-              "--opacity": p.opacity,
-              "--delay": `${p.delay}s`,
-              opacity: p.opacity,
-              transform: `rotate(${p.rotate}deg)`,
-              color: i % 4 === 0 ? undefined : i % 3 === 0 ? "#818cf8" : "#c8c8d8",
-              animationDelay: `${p.delay}s, ${p.delay}s`,
-            } as React.CSSProperties}
-          >
-            {p.text}
-          </span>
-        ))}
+        {/* Productivity Panel */}
+        <ProductivityPanel
+          stats={stats}
+          neglected={neglected}
+          suggestions={suggestions}
+          loading={insightsLoading}
+        />
 
-        {/* ── Main card ── */}
+        {/* Main Card */}
         <div className="card">
-          <div className="header">
-            <div>
-              <div className="header-title">My Tasks</div>
-              <div className="header-subtitle">
-                {completedCount} of {totalCount} completed
+          {/* Tabs */}
+          <div className="tabs">
+            {(["active", "archived", "shared"] as Tab[]).map((t) => (
+              <button
+                key={t}
+                className={`tab-btn ${tab === t ? "active" : ""}`}
+                onClick={() => setTab(t)}
+              >
+                {t === "active" ? "My Tasks" : t === "archived" ? "Archive" : "Shared"}
+                {t === "active" && tasks.length > 0 && (
+                  <span className="tab-count">{activeTasks.length}</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Progress (active only) */}
+          {tab === "active" && tasks.length > 0 && (
+            <>
+              <div className="progress-bar-wrap">
+                <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
               </div>
-            </div>
-            <button className="logout-btn" onClick={handleLogout}>
-              Sign out
-            </button>
-          </div>
+              <div className="progress-label">
+                <span>{doneTasks.length}/{tasks.length}</span> completed · <span>{Math.round(progress)}%</span>
+              </div>
+            </>
+          )}
 
-          <div className="progress-bar-wrap">
-            <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
-          </div>
-          <div className="progress-label">
-            <span>{Math.round(progress)}%</span> done
-          </div>
-
-          <form className="form-row" onSubmit={handleAddTask}>
-            <input
-              className="task-input"
-              placeholder="Add a new task..."
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-            <button className="add-btn" type="submit" disabled={adding || !title.trim()}>
-              {adding ? "..." : "+ Add"}
-            </button>
-          </form>
+          {/* Add task form (active tab only) */}
+          {tab === "active" && (
+            <form className="form-row" onSubmit={handleAddTask}>
+              <input
+                className="task-input"
+                placeholder="Add a new task..."
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+              <select
+                className="priority-select"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as Priority)}
+              >
+                <option value="low">🟢 Low</option>
+                <option value="medium">🟡 Medium</option>
+                <option value="high">🔴 High</option>
+              </select>
+              <button className="add-btn" type="submit" disabled={adding || !title.trim()}>
+                {adding ? "..." : "+ Add"}
+              </button>
+            </form>
+          )}
 
           <div className="divider" />
 
+          {/* Task list */}
           {loading ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="skeleton" />
-              ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[1, 2, 3].map((i) => <div key={i} className="skeleton" />)}
             </div>
           ) : tasks.length === 0 ? (
             <div className="empty-state">
-              <span className="empty-icon">📋</span>
-              No tasks yet — add one above!
+              <span className="empty-icon">
+                {tab === "active" ? "📋" : tab === "archived" ? "📦" : "🤝"}
+              </span>
+              {tab === "active" && "No tasks yet — add one above!"}
+              {tab === "archived" && "No archived tasks."}
+              {tab === "shared" && "No tasks shared with you yet."}
             </div>
           ) : (
             <div className="task-list">
               {tasks.map((task) => (
-                <div key={task.id} className={`task-item${task.completed ? " done" : ""}`}>
-                  <div
-                    className={`checkbox${task.completed ? " checked" : ""}`}
-                    onClick={() => handleToggle(task.id, task.completed)}
-                  />
-                  <span
-                    className={`task-label${task.completed ? " done" : ""}`}
-                    onClick={() => handleToggle(task.id, task.completed)}
-                  >
-                    {task.title}
-                  </span>
-                  <button
-                    className="delete-btn"
-                    type="button"
-                    onClick={() => handleDelete(task.id)}
-                  >
-                    ✕
-                  </button>
-                </div>
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  tab={tab}
+                  token={token}
+                  onToggle={handleToggle}
+                  onDelete={handleDelete}
+                  onArchive={handleArchive}
+                  onRestore={handleRestore}
+                  onShare={setShareTarget}
+                />
               ))}
             </div>
           )}
         </div>
-
-        <Signature />
       </div>
+
+      {/* Share Modal */}
+      {shareTarget && (
+        <ShareModal
+          task={shareTarget}
+          token={token}
+          onClose={() => setShareTarget(null)}
+        />
+      )}
     </>
   );
 }

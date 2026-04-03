@@ -1,23 +1,44 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import morgan from "morgan";
+import rateLimit from "express-rate-limit";
 import authRoutes from "./routes/authRoutes.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 import taskRoutes from "./routes/taskRoutes.js";
-
-
-
-import pool from "./config/db.js"; // optionnel, seulement si tu gardes /db-test
+import analyticsRoutes from "./routes/analyticsRoutes.js";
+import pool from "./config/db.js";
 
 const app = express();
 
-// Middlewares
+// ── Security headers
+app.use(helmet());
+
+// ── Logging
+app.use(morgan("dev"));
+
+// ── CORS (only allow your frontend)
 app.use(
   cors({
-    origin: true,
+    origin: process.env.FRONTEND_URL || true,
     credentials: true,
   })
 );
+
+// ── Body parser
 app.use(express.json());
+
+// ── Rate limiters
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: { error: "Too many requests, please try again later." },
+});
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: "Too many auth attempts. Try again in 15 minutes." },
+});
 
 // Test route
 app.get("/", (req, res) => {
@@ -35,14 +56,16 @@ app.get("/db-test", async (req, res) => {
   }
 });
 
-// Auth routes (IMPORTANT: après const app = express())
-app.use("/auth", authRoutes);
+// ── Routes
+app.use("/auth", authLimiter, authRoutes);
+app.use("/tasks", apiLimiter, taskRoutes);
+app.use("/analytics", apiLimiter, analyticsRoutes);
 
-// 
+// ── Me
 app.get("/me", requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, name, email, created_at FROM users WHERE id = $1",
+      "SELECT id, name, email, email_verified, created_at FROM users WHERE id = $1",
       [req.user.id]
     );
     res.json(result.rows[0]);
@@ -51,8 +74,5 @@ app.get("/me", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Failed to fetch user" });
   }
 });
-
-// task 
-app.use("/tasks", taskRoutes);
 
 export default app;

@@ -1,27 +1,30 @@
-// backend/src/routes/taskRoutes.js
-
 import express from "express";
+import { requireAuth } from "../middleware/authMiddleware.js";
 import {
   addTask,
   getMyTasks,
   deleteTask,
-  patchTaskCompleted
+  patchTask,
+  archiveTaskHandler,
+  restoreTaskHandler,
+  shareTaskHandler,
+  getCollaboratorsHandler,
+  removeShareHandler,
 } from "../controllers/taskController.js";
-
-import { requireAuth } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// CREATE
-router.post("/", requireAuth, addTask);
+// All routes require auth
+router.use(requireAuth);
 
-// READ
-router.get("/", requireAuth, getMyTasks);
-
-// DELETE
-router.delete("/:id", requireAuth, deleteTask);
-
-// UPDATE (completed true/false)
-router.patch("/:id", requireAuth, patchTaskCompleted);
+router.post("/", addTask);
+router.get("/", getMyTasks);                          // ?status=active|archived|shared
+router.delete("/:id", deleteTask);
+router.patch("/:id", patchTask);
+router.patch("/:id/archive", archiveTaskHandler);
+router.patch("/:id/restore", restoreTaskHandler);
+router.post("/:id/share", shareTaskHandler);
+router.get("/:id/collaborators", getCollaboratorsHandler);
+router.delete("/:id/share/:userId", removeShareHandler);
 
 export default router;

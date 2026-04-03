@@ -2,12 +2,14 @@ import pkg from "pg";
 const { Client } = pkg;
 
 export async function runMigrations() {
-  // Use a dedicated client (not the shared pool) for migrations
+  const dbUrl = process.env.DATABASE_URL || "";
+  const needsSSL = dbUrl.includes(".render.com") || dbUrl.includes("amazonaws");
+
   const client = new Client(
-    process.env.DATABASE_URL
+    dbUrl
       ? {
-          connectionString: process.env.DATABASE_URL,
-          ssl: { rejectUnauthorized: false },
+          connectionString: dbUrl,
+          ssl: needsSSL ? { rejectUnauthorized: false } : false,
         }
       : {
           user: process.env.DB_USER,
@@ -21,7 +23,6 @@ export async function runMigrations() {
   try {
     await client.connect();
     console.log("Running migrations...");
-
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
@@ -70,11 +71,10 @@ export async function runMigrations() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-
     console.log("Migrations completed successfully.");
   } catch (err) {
     console.error("Migration error:", err.message);
   } finally {
-    await client.end();
+    await client.end().catch(() => {});
   }
 }

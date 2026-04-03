@@ -1,10 +1,15 @@
 import pkg from "pg";
 const { Pool } = pkg;
 
-const pool = process.env.DATABASE_URL
+// Internal Render URLs (dpg-xxx-a) don't need SSL
+// External Render URLs (dpg-xxx-a.region-postgres.render.com) need SSL
+const dbUrl = process.env.DATABASE_URL || "";
+const needsSSL = dbUrl.includes(".render.com") || dbUrl.includes("amazonaws");
+
+const pool = dbUrl
   ? new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      connectionString: dbUrl,
+      ssl: needsSSL ? { rejectUnauthorized: false } : false,
       max: 5,
       idleTimeoutMillis: 10000,
       connectionTimeoutMillis: 10000,
@@ -17,7 +22,6 @@ const pool = process.env.DATABASE_URL
       port: Number(process.env.DB_PORT) || 5432,
     });
 
-// Log pool errors without crashing
 pool.on("error", (err) => {
   console.error("DB pool error:", err.message);
 });

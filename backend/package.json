@@ -24,6 +24,7 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.4",
     "pg": "^8.18.0",
+    "resend": "^6.10.0",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

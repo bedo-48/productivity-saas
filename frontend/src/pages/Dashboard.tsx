@@ -1,9 +1,12 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { io, Socket } from "socket.io-client";
 import {
   getTasks, createTask, deleteTask, toggleTask, archiveTask,
   restoreTask, shareTask, getStats, getNeglected, getSuggestions,
 } from "../services/api";
+
+const SOCKET_URL = import.meta.env.VITE_API_URL || "";
 
 // ── Types ────────────────────────────────────────────────────
 type Priority = "low" | "medium" | "high";
@@ -262,6 +265,7 @@ export default function Dashboard() {
   const [insightsLoading, setInsightsLoading] = useState(true);
   const navigate = useNavigate();
   const token = localStorage.getItem("token") || "";
+  const socketRef = useRef<Socket | null>(null);
 
   const loadTasks = useCallback(async (t: Tab) => {
     setLoading(true);
@@ -292,6 +296,26 @@ export default function Dashboard() {
   useEffect(() => {
     if (!token) { navigate("/"); return; }
     loadInsights();
+
+    // ── Socket.IO real-time connection ──
+    const socket = io(SOCKET_URL, { auth: { token }, transports: ["websocket"] });
+    socketRef.current = socket;
+
+    socket.on("task:updated", ({ task }: { task: Task }) => {
+      setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, ...task } : t));
+    });
+
+    socket.on("task:deleted", ({ taskId }: { taskId: number }) => {
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    });
+
+    socket.on("task:shared", () => {
+      // Someone shared a task with me — refresh shared tab if active
+      loadTasks("shared");
+      loadInsights();
+    });
+
+    return () => { socket.disconnect(); };
   }, []);
 
   useEffect(() => {

@@ -12,9 +12,10 @@ const server = http.createServer(app);
 const io = initSocket(server);
 app.set("io", io);
 
-// Run DB migrations then start server
-runMigrations().then(() => {
-  server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
+// Start server immediately, run migrations in background with delay
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
+
+// Wait 3s for DB to be ready, then migrate
+setTimeout(() => runMigrations(), 3000);

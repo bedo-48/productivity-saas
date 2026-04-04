@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {login} from "../services/api";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import Signature from "./Signature";
 
 export default function Login() {
@@ -331,7 +331,7 @@ export default function Login() {
           <div className="divider" />
           <p className="footer-text">
             Don't have an account?{" "}
-            <a href="/register" className="footer-link">Create one</a>
+            <Link to="/register" className="footer-link">Create one</Link>
           </p>
 
         </div>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {register} from "../services/api";
 import Signature from "./Signature";
 
@@ -23,7 +23,7 @@ export default function Register() {
       localStorage.setItem("token", data.token);
       navigate("/dashboard");
     } catch (err: any) {
-      setError(err.response?.data?.error || "Registration failed.");
+      setError(err.message || "Registration failed.");
     } finally {
       setLoading(false);
     }
@@ -324,7 +324,7 @@ export default function Register() {
           <div className="divider" />
           <p className="footer-text">
             Already have an account?{" "}
-            <a href="/login" className="footer-link">Sign in</a>
+            <Link to="/" className="footer-link">Sign in</Link>
           </p>
 
         </div>

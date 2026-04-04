@@ -1,18 +1,7 @@
 import pkg from "pg";
 const { Pool } = pkg;
 
-const dbUrl = process.env.DATABASE_URL || "";
-
-// Diagnostic log — masked password
-if (dbUrl) {
-  const masked = dbUrl.replace(/:([^:@]{1,})@/, ":***@");
-  console.log("DB connecting to:", masked);
-} else {
-  console.log("DATABASE_URL not set — using individual env vars");
-  console.log("DB_HOST:", process.env.DB_HOST || "NOT SET");
-}
-
-const needsSSL = dbUrl.includes(".render.com") || dbUrl.includes("amazonaws");
+const dbUrl = process.env.DATABASE_URL;
 
 const pool = dbUrl
   ? new Pool({

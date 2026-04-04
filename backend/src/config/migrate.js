@@ -55,6 +55,7 @@ const statements = [
     details JSONB,
     created_at TIMESTAMP DEFAULT NOW()
   )`,
+  `ALTER TABLE email_verification_codes ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'verification'`,
   `CREATE TABLE IF NOT EXISTS notifications (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

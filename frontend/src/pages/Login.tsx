@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import {login} from "../services/api";
+import { login } from "../services/api";
 import { useNavigate, Link } from "react-router-dom";
 import Signature from "./Signature";
 
@@ -329,6 +329,9 @@ export default function Login() {
           {message && <div className="error-msg">⚠ {message}</div>}
 
           <div className="divider" />
+          <p className="footer-text" style={{ marginBottom: "10px" }}>
+            <Link to="/forgot-password" className="footer-link">Forgot password?</Link>
+          </p>
           <p className="footer-text">
             Don't have an account?{" "}
             <Link to="/register" className="footer-link">Create one</Link>

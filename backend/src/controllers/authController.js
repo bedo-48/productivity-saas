@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import pool from "../config/db.js";
 import {
   createUser,
   findUserByEmail,
@@ -11,7 +12,7 @@ import {
   findValidCode,
   markCodeUsed,
 } from "../models/verificationModel.js";
-import { sendVerificationEmail } from "../services/emailService.js";
+import { sendVerificationEmail, sendPasswordResetEmail } from "../services/emailService.js";
 
 function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -155,6 +156,54 @@ export const verifyEmail = async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Verification failed" });
+  }
+};
+
+// ── FORGOT PASSWORD ──────────────────────────────────────────
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required" });
+
+    const user = await findUserByEmail(email);
+    // Always return success to avoid email enumeration
+    if (!user) return res.json({ message: "If that email exists, a reset code was sent." });
+
+    const code = generateCode();
+    await createCode(user.id, code, "password_reset");
+    await sendPasswordResetEmail(email, code);
+
+    return res.json({ message: "If that email exists, a reset code was sent." });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to send reset code" });
+  }
+};
+
+// ── RESET PASSWORD ───────────────────────────────────────────
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword)
+      return res.status(400).json({ error: "All fields are required" });
+    if (newPassword.length < 8)
+      return res.status(400).json({ error: "Password must be at least 8 characters" });
+
+    const user = await findUserByEmail(email);
+    if (!user) return res.status(400).json({ error: "Invalid code" });
+
+    const record = await findValidCode(user.id, code, "password_reset");
+    if (!record) return res.status(400).json({ error: "Invalid or expired code" });
+
+    await markCodeUsed(record.id);
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await pool.query(`UPDATE users SET password = $1 WHERE id = $2`, [hashed, user.id]);
+
+    return res.json({ message: "Password reset successfully" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Password reset failed" });
   }
 };
 

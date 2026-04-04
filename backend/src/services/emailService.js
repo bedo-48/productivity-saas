@@ -21,3 +21,21 @@ export async function sendVerificationEmail(toEmail, code) {
     console.error("Email send failed:", err);
   }
 }
+export async function sendTaskSharedEmail(toEmail, sharedByName, taskTitle) {
+  try {
+    await resend.emails.send({
+      from: "TaskFlow <onboarding@resend.dev>",
+      to: toEmail,
+      subject: `${sharedByName} shared a task with you`,
+      html: `
+        <div style="font-family: Arial; padding: 30px">
+          <h2>New shared task</h2>
+          <p><strong>${sharedByName}</strong> shared the task <strong>"${taskTitle}"</strong> with you.</p>
+          <p>Log in to TaskFlow to collaborate.</p>
+        </div>
+      `,
+    });
+  } catch (err) {
+    console.error("Shared task email failed:", err);
+  }
+}

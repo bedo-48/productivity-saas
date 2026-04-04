@@ -1,15 +1,23 @@
 import pkg from "pg";
 const { Pool } = pkg;
 
-// Internal Render URLs (dpg-xxx-a) don't need SSL
-// External Render URLs (dpg-xxx-a.region-postgres.render.com) need SSL
 const dbUrl = process.env.DATABASE_URL || "";
+
+// Diagnostic log — masked password
+if (dbUrl) {
+  const masked = dbUrl.replace(/:([^:@]{1,})@/, ":***@");
+  console.log("DB connecting to:", masked);
+} else {
+  console.log("DATABASE_URL not set — using individual env vars");
+  console.log("DB_HOST:", process.env.DB_HOST || "NOT SET");
+}
+
 const needsSSL = dbUrl.includes(".render.com") || dbUrl.includes("amazonaws");
 
 const pool = dbUrl
   ? new Pool({
       connectionString: dbUrl,
-      ssl: needsSSL ? { rejectUnauthorized: false } : false,
+      ssl: { rejectUnauthorized: false },
       max: 5,
       idleTimeoutMillis: 10000,
       connectionTimeoutMillis: 10000,

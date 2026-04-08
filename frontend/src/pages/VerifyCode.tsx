@@ -8,6 +8,7 @@ const PENDING_LOGIN_EMAIL_KEY = "pendingLoginEmail";
 export default function VerifyCode() {
   const [digits, setDigits] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [cooldown, setCooldown] = useState(0);
@@ -35,6 +36,7 @@ export default function VerifyCode() {
     const next = [...digits];
     next[index] = value;
     setDigits(next);
+    if (error) setError("");
     if (value && index < 5) refs.current[index + 1]?.focus();
   };
 
@@ -83,9 +85,10 @@ export default function VerifyCode() {
   };
 
   const handleResend = async () => {
-    if (!pendingEmail || cooldown > 0) return;
+    if (!pendingEmail || cooldown > 0 || resending) return;
     setError("");
     setSuccess("");
+    setResending(true);
 
     try {
       await resendLoginCode(pendingEmail);
@@ -93,6 +96,8 @@ export default function VerifyCode() {
       setCooldown(60);
     } catch (resendError) {
       setError(resendError instanceof Error ? resendError.message : "Failed to resend code.");
+    } finally {
+      setResending(false);
     }
   };
 
@@ -101,23 +106,24 @@ export default function VerifyCode() {
       <style>{`
         .auth-form {
           width: 100%;
-          max-width: 280px;
+          max-width: 340px;
           text-align: center;
         }
 
         .auth-title {
           font-family: "Newsreader", serif;
-          font-size: 1.5rem;
+          font-size: clamp(2rem, 3vw, 2.45rem);
           font-weight: 600;
           color: #3e342d;
-          margin-bottom: 8px;
+          margin-bottom: 10px;
+          letter-spacing: -0.02em;
         }
 
         .auth-subtitle {
-          font-size: 0.9rem;
+          font-size: 1rem;
           color: #6b564a;
-          margin-bottom: 20px;
-          line-height: 1.4;
+          margin-bottom: 24px;
+          line-height: 1.65;
         }
 
         .verify-email {
@@ -127,43 +133,47 @@ export default function VerifyCode() {
 
         .digits {
           display: flex;
-          gap: 8px;
+          gap: 10px;
           justify-content: center;
-          margin-bottom: 20px;
+          margin-bottom: 24px;
         }
 
         .digit-input {
-          width: 36px;
-          height: 44px;
-          border-radius: 6px;
-          border: 1px solid rgba(72, 57, 49, 0.3);
-          background: rgba(255, 255, 255, 0.9);
+          width: 44px;
+          height: 54px;
+          border-radius: 10px;
+          border: 1px solid rgba(72, 57, 49, 0.24);
+          background: rgba(255, 252, 247, 0.94);
           color: #3e342d;
-          font-size: 1.2rem;
+          font-size: 1.45rem;
           font-weight: 700;
           text-align: center;
           outline: none;
           font-family: "Patrick Hand", cursive;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);
         }
 
         .digit-input:focus {
           border-color: #8b6e63;
           background: #fff;
+          box-shadow: 0 0 0 4px rgba(208, 143, 88, 0.12);
         }
 
         .submit-btn {
           width: 100%;
-          padding: 10px;
-          border-radius: 6px;
+          padding: 13px 16px;
+          border-radius: 999px;
           border: none;
           background: linear-gradient(135deg, #d08f58, #c5655d);
           color: #fffaf4;
           font-family: "Manrope", sans-serif;
-          font-size: 0.9rem;
-          font-weight: 500;
+          font-size: 0.96rem;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
           cursor: pointer;
           margin-top: 12px;
-          box-shadow: 0 4px 12px rgba(169, 99, 69, 0.3);
+          box-shadow: 0 14px 24px rgba(169, 99, 69, 0.24);
         }
 
         .submit-btn:disabled {
@@ -175,7 +185,10 @@ export default function VerifyCode() {
           background: none;
           border: none;
           color: #8b6e63;
-          font-size: 0.8rem;
+          font-size: 0.82rem;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
           cursor: pointer;
           text-decoration: underline;
           padding: 0;
@@ -190,24 +203,26 @@ export default function VerifyCode() {
         }
 
         .error-msg {
-          margin-top: 12px;
-          padding: 8px 10px;
-          border-radius: 6px;
+          margin-top: 14px;
+          padding: 10px 12px;
+          border-radius: 10px;
           background: rgba(204, 107, 95, 0.1);
           border: 1px solid rgba(204, 107, 95, 0.3);
           color: #cc6b5f;
-          font-size: 0.8rem;
+          font-size: 0.82rem;
+          line-height: 1.45;
           text-align: center;
         }
 
         .success-msg {
-          margin-top: 12px;
-          padding: 8px 10px;
-          border-radius: 6px;
+          margin-top: 14px;
+          padding: 10px 12px;
+          border-radius: 10px;
           background: rgba(109, 148, 182, 0.1);
           border: 1px solid rgba(109, 148, 182, 0.3);
           color: #6d9478;
-          font-size: 0.8rem;
+          font-size: 0.82rem;
+          line-height: 1.45;
           text-align: center;
         }
       `}</style>
@@ -238,8 +253,8 @@ export default function VerifyCode() {
             <button className="submit-btn" type="submit" disabled={loading || digits.join("").length !== 6}>
               {loading ? "Verifying..." : "Verify code"}
             </button>
-            <button className="resend-btn" type="button" onClick={handleResend} disabled={cooldown > 0}>
-              {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
+            <button className="resend-btn" type="button" onClick={handleResend} disabled={cooldown > 0 || resending}>
+              {resending ? "Sending..." : cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
             </button>
           </>
         )}

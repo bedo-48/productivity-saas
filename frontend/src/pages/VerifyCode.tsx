@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import ClosedNotebookAuthLayout from "../components/ClosedNotebookAuthLayout";
 import { resendLoginCode, verifyLoginCode } from "../services/api";
 
 const PENDING_LOGIN_EMAIL_KEY = "pendingLoginEmail";
@@ -10,6 +11,7 @@ export default function VerifyCode() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  const [isOpening, setIsOpening] = useState(false);
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const navigate = useNavigate();
   const pendingEmail = sessionStorage.getItem(PENDING_LOGIN_EMAIL_KEY) || "";
@@ -67,8 +69,10 @@ export default function VerifyCode() {
       const data = await verifyLoginCode(pendingEmail, code);
       localStorage.setItem("token", data.token);
       sessionStorage.removeItem(PENDING_LOGIN_EMAIL_KEY);
-      setSuccess("Verification complete. Redirecting...");
-      window.setTimeout(() => navigate("/dashboard"), 700);
+      setSuccess("Verification complete!");
+      setIsOpening(true);
+      // Start opening animation, then navigate
+      setTimeout(() => navigate("/dashboard"), 2000);
     } catch (verifyError) {
       setError(verifyError instanceof Error ? verifyError.message : "Invalid code.");
       setDigits(["", "", "", "", "", ""]);
@@ -93,103 +97,129 @@ export default function VerifyCode() {
   };
 
   return (
-    <>
+    <ClosedNotebookAuthLayout className={isOpening ? "notebook-opening" : ""}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap');
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        .verify-root {
-          min-height: 100vh;
-          background: #0e0e12;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: 'DM Sans', sans-serif;
-          padding: 24px;
-        }
-        .verify-card {
+        .auth-form {
           width: 100%;
-          max-width: 460px;
-          background: #16161e;
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 20px;
-          padding: 40px 32px;
+          max-width: 280px;
           text-align: center;
-          box-shadow: 0 24px 60px rgba(0,0,0,0.5);
         }
-        .verify-icon { font-size: 42px; margin-bottom: 16px; display: block; }
-        .verify-title {
-          font-family: 'Syne', sans-serif;
-          font-size: 24px;
-          font-weight: 800;
-          color: #fff;
+
+        .auth-title {
+          font-family: "Newsreader", serif;
+          font-size: 1.5rem;
+          font-weight: 600;
+          color: #3e342d;
           margin-bottom: 8px;
         }
-        .verify-sub {
-          font-size: 14px;
-          color: #8e8ea4;
-          margin-bottom: 28px;
-          line-height: 1.6;
+
+        .auth-subtitle {
+          font-size: 0.9rem;
+          color: #6b564a;
+          margin-bottom: 20px;
+          line-height: 1.4;
         }
+
         .verify-email {
-          color: #c7d2fe;
+          color: #8b6e63;
           font-weight: 600;
         }
-        .digits { display: flex; gap: 10px; justify-content: center; margin-bottom: 24px; }
+
+        .digits {
+          display: flex;
+          gap: 8px;
+          justify-content: center;
+          margin-bottom: 20px;
+        }
+
         .digit-input {
-          width: 50px;
-          height: 58px;
-          border-radius: 12px;
-          border: 2px solid rgba(255,255,255,0.1);
-          background: rgba(255,255,255,0.04);
-          color: #fff;
-          font-size: 22px;
+          width: 36px;
+          height: 44px;
+          border-radius: 6px;
+          border: 1px solid rgba(72, 57, 49, 0.3);
+          background: rgba(255, 255, 255, 0.9);
+          color: #3e342d;
+          font-size: 1.2rem;
           font-weight: 700;
           text-align: center;
           outline: none;
-          transition: border-color 0.2s;
-          font-family: 'Syne', sans-serif;
+          font-family: "Patrick Hand", cursive;
         }
-        .digit-input:focus { border-color: #6366f1; background: rgba(99,102,241,0.08); }
-        .verify-btn {
+
+        .digit-input:focus {
+          border-color: #8b6e63;
+          background: #fff;
+        }
+
+        .submit-btn {
           width: 100%;
-          padding: 14px;
-          border-radius: 12px;
+          padding: 10px;
+          border-radius: 6px;
           border: none;
-          background: linear-gradient(135deg, #6366f1, #818cf8);
-          color: white;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 15px;
-          font-weight: 600;
+          background: linear-gradient(135deg, #d08f58, #c5655d);
+          color: #fffaf4;
+          font-family: "Manrope", sans-serif;
+          font-size: 0.9rem;
+          font-weight: 500;
           cursor: pointer;
-          transition: opacity 0.2s;
-          margin-bottom: 18px;
+          margin-top: 12px;
+          box-shadow: 0 4px 12px rgba(169, 99, 69, 0.3);
         }
-        .verify-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .submit-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
         .resend-btn {
           background: none;
           border: none;
-          color: #a5b4fc;
-          font-size: 13px;
+          color: #8b6e63;
+          font-size: 0.8rem;
           cursor: pointer;
           text-decoration: underline;
           padding: 0;
-          font-family: 'DM Sans', sans-serif;
+          font-family: "Manrope", sans-serif;
+          margin-top: 12px;
         }
-        .resend-btn:disabled { color: #55556a; cursor: default; text-decoration: none; }
-        .msg-error, .msg-success { font-size: 13px; margin-bottom: 12px; }
-        .msg-error { color: #f87171; }
-        .msg-success { color: #34d399; }
+
+        .resend-btn:disabled {
+          color: #9b877b;
+          cursor: default;
+          text-decoration: none;
+        }
+
+        .error-msg {
+          margin-top: 12px;
+          padding: 8px 10px;
+          border-radius: 6px;
+          background: rgba(204, 107, 95, 0.1);
+          border: 1px solid rgba(204, 107, 95, 0.3);
+          color: #cc6b5f;
+          font-size: 0.8rem;
+          text-align: center;
+        }
+
+        .success-msg {
+          margin-top: 12px;
+          padding: 8px 10px;
+          border-radius: 6px;
+          background: rgba(109, 148, 182, 0.1);
+          border: 1px solid rgba(109, 148, 182, 0.3);
+          color: #6d9478;
+          font-size: 0.8rem;
+          text-align: center;
+        }
       `}</style>
-      <div className="verify-root">
-        <div className="verify-card">
-          <span className="verify-icon">&#128231;</span>
-          <div className="verify-title">Enter your sign-in code</div>
-          <div className="verify-sub">
-            Enter the 6-digit code sent to your email: <span className="verify-email">{pendingEmail}</span>
-          </div>
-          {error && <div className="msg-error">{error}</div>}
-          {success && <div className="msg-success">{success}</div>}
-          <form onSubmit={handleSubmit}>
+      <form className="auth-form" onSubmit={handleSubmit}>
+        <div className="auth-title">Enter your sign-in code</div>
+        <div className="auth-subtitle">
+          Enter the 6-digit code sent to: <span className="verify-email">{pendingEmail}</span>
+        </div>
+        {error && <div className="error-msg">{error}</div>}
+        {success && <div className="success-msg">{success}</div>}
+        {!isOpening && (
+          <>
             <div className="digits" onPaste={handlePaste}>
               {digits.map((digit, index) => (
                 <input
@@ -205,15 +235,15 @@ export default function VerifyCode() {
                 />
               ))}
             </div>
-            <button className="verify-btn" type="submit" disabled={loading || digits.join("").length !== 6}>
+            <button className="submit-btn" type="submit" disabled={loading || digits.join("").length !== 6}>
               {loading ? "Verifying..." : "Verify code"}
             </button>
-          </form>
-          <button className="resend-btn" type="button" onClick={handleResend} disabled={cooldown > 0}>
-            {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
-          </button>
-        </div>
-      </div>
-    </>
+            <button className="resend-btn" type="button" onClick={handleResend} disabled={cooldown > 0}>
+              {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
+            </button>
+          </>
+        )}
+      </form>
+    </ClosedNotebookAuthLayout>
   );
 }

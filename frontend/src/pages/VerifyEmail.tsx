@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import ClosedNotebookAuthLayout from "../components/ClosedNotebookAuthLayout";
 import { verifyEmail, resendCode } from "../services/api";
 
 export default function VerifyEmail() {
@@ -8,6 +9,7 @@ export default function VerifyEmail() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  const [isOpening, setIsOpening] = useState(false);
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const navigate = useNavigate();
   const token = localStorage.getItem("token") || "";
@@ -54,7 +56,8 @@ export default function VerifyEmail() {
     try {
       await verifyEmail(code, token);
       setSuccess("Email verified!");
-      setTimeout(() => navigate("/dashboard"), 1200);
+      setIsOpening(true);
+      setTimeout(() => navigate("/dashboard"), 2000);
     } catch (err: any) {
       setError(err.message || "Invalid code");
       setDigits(["", "", "", "", "", ""]);
@@ -77,64 +80,124 @@ export default function VerifyEmail() {
   };
 
   return (
-    <>
+    <ClosedNotebookAuthLayout className={isOpening ? "notebook-opening" : ""}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap');
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #0e0e12; }
-        .verify-root {
-          min-height: 100vh; background: #0e0e12; display: flex;
-          align-items: center; justify-content: center;
-          font-family: 'DM Sans', sans-serif; padding: 24px;
+        .auth-form {
+          width: 100%;
+          max-width: 280px;
+          text-align: center;
         }
-        .verify-card {
-          width: 100%; max-width: 420px; background: #16161e;
-          border: 1px solid rgba(255,255,255,0.07); border-radius: 20px;
-          padding: 40px 32px; text-align: center;
-          box-shadow: 0 24px 60px rgba(0,0,0,0.5);
-          animation: slideUp 0.4s cubic-bezier(0.22,1,0.36,1);
+
+        .auth-title {
+          font-family: "Newsreader", serif;
+          font-size: 1.5rem;
+          font-weight: 600;
+          color: #3e342d;
+          margin-bottom: 8px;
         }
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
+
+        .auth-subtitle {
+          font-size: 0.9rem;
+          color: #6b564a;
+          margin-bottom: 20px;
+          line-height: 1.4;
         }
-        .verify-icon { font-size: 48px; margin-bottom: 16px; display: block; }
-        .verify-title { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; color: #fff; margin-bottom: 8px; }
-        .verify-sub { font-size: 14px; color: #6b6b7e; margin-bottom: 32px; }
-        .digits { display: flex; gap: 10px; justify-content: center; margin-bottom: 28px; }
+
+        .digits {
+          display: flex;
+          gap: 8px;
+          justify-content: center;
+          margin-bottom: 20px;
+        }
+
         .digit-input {
-          width: 48px; height: 56px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.1);
-          background: rgba(255,255,255,0.04); color: #fff; font-size: 22px; font-weight: 700;
-          text-align: center; outline: none; transition: border-color 0.2s;
-          font-family: 'Syne', sans-serif;
+          width: 36px;
+          height: 44px;
+          border-radius: 6px;
+          border: 1px solid rgba(72, 57, 49, 0.3);
+          background: rgba(255, 255, 255, 0.9);
+          color: #3e342d;
+          font-size: 1.2rem;
+          font-weight: 700;
+          text-align: center;
+          outline: none;
+          font-family: "Patrick Hand", cursive;
         }
-        .digit-input:focus { border-color: #6366f1; background: rgba(99,102,241,0.08); }
-        .verify-btn {
-          width: 100%; padding: 14px; border-radius: 12px; border: none;
-          background: linear-gradient(135deg, #6366f1, #818cf8); color: white;
-          font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 600;
-          cursor: pointer; transition: opacity 0.2s; margin-bottom: 20px;
+
+        .digit-input:focus {
+          border-color: #8b6e63;
+          background: #fff;
         }
-        .verify-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .submit-btn {
+          width: 100%;
+          padding: 10px;
+          border-radius: 6px;
+          border: none;
+          background: linear-gradient(135deg, #d08f58, #c5655d);
+          color: #fffaf4;
+          font-family: "Manrope", sans-serif;
+          font-size: 0.9rem;
+          font-weight: 500;
+          cursor: pointer;
+          margin-top: 12px;
+          box-shadow: 0 4px 12px rgba(169, 99, 69, 0.3);
+        }
+
+        .submit-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
         .resend-btn {
-          background: none; border: none; color: #6366f1; font-size: 13px;
-          cursor: pointer; text-decoration: underline; padding: 0;
-          font-family: 'DM Sans', sans-serif;
+          background: none;
+          border: none;
+          color: #8b6e63;
+          font-size: 0.8rem;
+          cursor: pointer;
+          text-decoration: underline;
+          padding: 0;
+          font-family: "Manrope", sans-serif;
+          margin-top: 12px;
         }
-        .resend-btn:disabled { color: #55556a; cursor: default; text-decoration: none; }
-        .msg-error { color: #f87171; font-size: 13px; margin-bottom: 12px; }
-        .msg-success { color: #34d399; font-size: 13px; margin-bottom: 12px; }
+
+        .resend-btn:disabled {
+          color: #9b877b;
+          cursor: default;
+          text-decoration: none;
+        }
+
+        .error-msg {
+          margin-top: 12px;
+          padding: 8px 10px;
+          border-radius: 6px;
+          background: rgba(204, 107, 95, 0.1);
+          border: 1px solid rgba(204, 107, 95, 0.3);
+          color: #cc6b5f;
+          font-size: 0.8rem;
+          text-align: center;
+        }
+
+        .success-msg {
+          margin-top: 12px;
+          padding: 8px 10px;
+          border-radius: 6px;
+          background: rgba(109, 148, 182, 0.1);
+          border: 1px solid rgba(109, 148, 182, 0.3);
+          color: #6d9478;
+          font-size: 0.8rem;
+          text-align: center;
+        }
       `}</style>
-      <div className="verify-root">
-        <div className="verify-card">
-          <span className="verify-icon">📬</span>
-          <div className="verify-title">Check your email</div>
-          <div className="verify-sub">We sent a 6-digit code to your email. Enter it below to verify your account.</div>
-
-          {error && <div className="msg-error">{error}</div>}
-          {success && <div className="msg-success">{success}</div>}
-
-          <form onSubmit={handleSubmit}>
+      <form className="auth-form" onSubmit={handleSubmit}>
+        <div className="auth-title">Check your email</div>
+        <div className="auth-subtitle">
+          We sent a 6-digit code to your email. Enter it below to verify your account.
+        </div>
+        {error && <div className="error-msg">{error}</div>}
+        {success && <div className="success-msg">{success}</div>}
+        {!isOpening && (
+          <>
             <div className="digits" onPaste={handlePaste}>
               {digits.map((d, i) => (
                 <input
@@ -150,16 +213,15 @@ export default function VerifyEmail() {
                 />
               ))}
             </div>
-            <button className="verify-btn" type="submit" disabled={loading || digits.join("").length < 6}>
+            <button className="submit-btn" type="submit" disabled={loading || digits.join("").length !== 6}>
               {loading ? "Verifying..." : "Verify email"}
             </button>
-          </form>
-
-          <button className="resend-btn" onClick={handleResend} disabled={cooldown > 0}>
-            {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
-          </button>
-        </div>
-      </div>
-    </>
+            <button className="resend-btn" type="button" onClick={handleResend} disabled={cooldown > 0}>
+              {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
+            </button>
+          </>
+        )}
+      </form>
+    </ClosedNotebookAuthLayout>
   );
 }

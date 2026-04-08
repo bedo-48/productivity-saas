@@ -1,23 +1,23 @@
 import {
+  archiveTask,
   createTask,
+  deleteTaskById,
+  findTaskById,
   getActiveTasks,
   getArchivedTasks,
-  getSharedTasks,
-  findTaskById,
-  updateTaskCompleted,
-  updateTask,
-  archiveTask,
-  restoreTask,
-  deleteTaskById,
-  shareTask,
-  removeShare,
   getCollaborators,
+  getRecentActivity,
+  getSharedTasks,
   logActivity,
+  removeShare,
+  restoreTask,
+  shareTask,
+  updateTask,
+  updateTaskCompleted,
 } from "../models/taskModel.js";
 import { findUserByEmail, findUserById } from "../models/userModel.js";
 import { sendTaskSharedEmail } from "../services/emailService.js";
 
-// ── ADD TASK ─────────────────────────────────────────────────
 export const addTask = async (req, res) => {
   try {
     const { title, description, priority, due_date } = req.body;
@@ -32,7 +32,6 @@ export const addTask = async (req, res) => {
   }
 };
 
-// ── GET TASKS (active / archived / shared) ───────────────────
 export const getMyTasks = async (req, res) => {
   try {
     const { status } = req.query;
@@ -51,7 +50,16 @@ export const getMyTasks = async (req, res) => {
   }
 };
 
-// ── DELETE TASK ──────────────────────────────────────────────
+export const getActivityHandler = async (req, res) => {
+  try {
+    const activity = await getRecentActivity(req.user.id);
+    res.json(activity);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch activity log" });
+  }
+};
+
 export const deleteTask = async (req, res) => {
   try {
     const deleted = await deleteTaskById(req.user.id, Number(req.params.id));
@@ -67,7 +75,6 @@ export const deleteTask = async (req, res) => {
   }
 };
 
-// ── PATCH TASK (completed + title/description/priority/due_date) ──
 export const patchTask = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -95,7 +102,6 @@ export const patchTask = async (req, res) => {
   }
 };
 
-// ── ARCHIVE TASK ─────────────────────────────────────────────
 export const archiveTaskHandler = async (req, res) => {
   try {
     const archived = await archiveTask(req.user.id, Number(req.params.id));
@@ -108,7 +114,6 @@ export const archiveTaskHandler = async (req, res) => {
   }
 };
 
-// ── RESTORE TASK ─────────────────────────────────────────────
 export const restoreTaskHandler = async (req, res) => {
   try {
     const restored = await restoreTask(req.user.id, Number(req.params.id));
@@ -121,25 +126,25 @@ export const restoreTaskHandler = async (req, res) => {
   }
 };
 
-// ── SHARE TASK ───────────────────────────────────────────────
 export const shareTaskHandler = async (req, res) => {
   try {
     const taskId = Number(req.params.id);
     const { email, permission = "view" } = req.body;
 
     const task = await findTaskById(taskId);
-    if (!task || task.user_id !== req.user.id)
+    if (!task || task.user_id !== req.user.id) {
       return res.status(403).json({ error: "Not authorized" });
+    }
 
     const targetUser = await findUserByEmail(email);
     if (!targetUser) return res.status(404).json({ error: "User not found with that email" });
-    if (targetUser.id === req.user.id)
+    if (targetUser.id === req.user.id) {
       return res.status(400).json({ error: "You cannot share a task with yourself" });
+    }
 
     const share = await shareTask(taskId, targetUser.id, permission);
     await logActivity(taskId, req.user.id, "shared", { with: email, permission });
 
-    // Notify via socket
     const io = req.app.get("io");
     io?.to(`user:${targetUser.id}`).emit("task:shared", {
       task,
@@ -147,7 +152,6 @@ export const shareTaskHandler = async (req, res) => {
       permission,
     });
 
-    // Send email (non-blocking)
     const me = await findUserById(req.user.id);
     sendTaskSharedEmail(email, me?.name || "Someone", task.title).catch(() => {});
 
@@ -158,7 +162,6 @@ export const shareTaskHandler = async (req, res) => {
   }
 };
 
-// ── GET COLLABORATORS ────────────────────────────────────────
 export const getCollaboratorsHandler = async (req, res) => {
   try {
     const collaborators = await getCollaborators(Number(req.params.id));
@@ -168,14 +171,14 @@ export const getCollaboratorsHandler = async (req, res) => {
   }
 };
 
-// ── REMOVE SHARE ─────────────────────────────────────────────
 export const removeShareHandler = async (req, res) => {
   try {
     const taskId = Number(req.params.id);
     const targetUserId = Number(req.params.userId);
     const task = await findTaskById(taskId);
-    if (!task || task.user_id !== req.user.id)
+    if (!task || task.user_id !== req.user.id) {
       return res.status(403).json({ error: "Not authorized" });
+    }
     await removeShare(taskId, targetUserId);
     res.json({ message: "Collaborator removed" });
   } catch (err) {
@@ -183,5 +186,4 @@ export const removeShareHandler = async (req, res) => {
   }
 };
 
-// legacy alias
 export const patchTaskCompleted = patchTask;

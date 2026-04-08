@@ -1,6 +1,5 @@
 import pool from "../config/db.js";
 
-// ── CREATE ──────────────────────────────────────────────────
 export const createTask = async (userId, title, description = null, priority = "medium", dueDate = null) => {
   const result = await pool.query(
     `INSERT INTO tasks (user_id, title, description, priority, due_date)
@@ -11,7 +10,6 @@ export const createTask = async (userId, title, description = null, priority = "
   return result.rows[0];
 };
 
-// ── READ: active tasks (non archivées) ──────────────────────
 export const getActiveTasks = async (userId) => {
   const result = await pool.query(
     `SELECT t.*,
@@ -34,7 +32,6 @@ export const getActiveTasks = async (userId) => {
   return result.rows;
 };
 
-// ── READ: archived tasks ────────────────────────────────────
 export const getArchivedTasks = async (userId) => {
   const result = await pool.query(
     `SELECT * FROM tasks
@@ -45,7 +42,6 @@ export const getArchivedTasks = async (userId) => {
   return result.rows;
 };
 
-// ── READ: tasks shared with me ──────────────────────────────
 export const getSharedTasks = async (userId) => {
   const result = await pool.query(
     `SELECT t.*, ts.permission, u.name AS owner_name, u.email AS owner_email
@@ -59,13 +55,32 @@ export const getSharedTasks = async (userId) => {
   return result.rows;
 };
 
-// ── READ: one task by id ────────────────────────────────────
+export const getRecentActivity = async (userId) => {
+  const result = await pool.query(
+    `SELECT l.id,
+            l.task_id,
+            l.action,
+            l.details,
+            l.created_at,
+            t.title AS task_title,
+            u.name AS actor_name
+     FROM task_activity_log l
+     JOIN tasks t ON t.id = l.task_id
+     JOIN users u ON u.id = l.user_id
+     LEFT JOIN task_shares ts ON ts.task_id = t.id AND ts.shared_with_user_id = $1
+     WHERE t.user_id = $1 OR ts.shared_with_user_id = $1
+     ORDER BY l.created_at DESC
+     LIMIT 30`,
+    [userId]
+  );
+  return result.rows;
+};
+
 export const findTaskById = async (taskId) => {
   const result = await pool.query(`SELECT * FROM tasks WHERE id = $1`, [taskId]);
   return result.rows[0];
 };
 
-// ── UPDATE: completed ───────────────────────────────────────
 export const updateTaskCompleted = async (userId, taskId, completed) => {
   const result = await pool.query(
     `UPDATE tasks SET completed = $1, updated_at = NOW()
@@ -79,7 +94,6 @@ export const updateTaskCompleted = async (userId, taskId, completed) => {
   return result.rows[0];
 };
 
-// ── UPDATE: full task edit ──────────────────────────────────
 export const updateTask = async (userId, taskId, fields) => {
   const { title, description, priority, due_date } = fields;
   const result = await pool.query(
@@ -96,7 +110,6 @@ export const updateTask = async (userId, taskId, fields) => {
   return result.rows[0];
 };
 
-// ── ARCHIVE ─────────────────────────────────────────────────
 export const archiveTask = async (userId, taskId) => {
   const result = await pool.query(
     `UPDATE tasks SET archived = true, archived_at = NOW(), updated_at = NOW()
@@ -107,7 +120,6 @@ export const archiveTask = async (userId, taskId) => {
   return result.rows[0];
 };
 
-// ── RESTORE ─────────────────────────────────────────────────
 export const restoreTask = async (userId, taskId) => {
   const result = await pool.query(
     `UPDATE tasks SET archived = false, archived_at = NULL, updated_at = NOW()
@@ -118,7 +130,6 @@ export const restoreTask = async (userId, taskId) => {
   return result.rows[0];
 };
 
-// ── DELETE ──────────────────────────────────────────────────
 export const deleteTaskById = async (userId, taskId) => {
   const result = await pool.query(
     `DELETE FROM tasks WHERE id = $1 AND user_id = $2 RETURNING *`,
@@ -127,7 +138,6 @@ export const deleteTaskById = async (userId, taskId) => {
   return result.rows[0];
 };
 
-// ── TOGGLE (legacy) ─────────────────────────────────────────
 export const toggleTaskCompleted = async (userId, taskId) => {
   const result = await pool.query(
     `UPDATE tasks SET completed = NOT completed, updated_at = NOW()
@@ -137,7 +147,6 @@ export const toggleTaskCompleted = async (userId, taskId) => {
   return result.rows[0];
 };
 
-// ── SHARE ───────────────────────────────────────────────────
 export const shareTask = async (taskId, sharedWithUserId, permission = "view") => {
   const result = await pool.query(
     `INSERT INTO task_shares (task_id, shared_with_user_id, permission)
@@ -168,7 +177,6 @@ export const getCollaborators = async (taskId) => {
   return result.rows;
 };
 
-// ── ACTIVITY LOG ────────────────────────────────────────────
 export const logActivity = async (taskId, userId, action, details = null) => {
   await pool.query(
     `INSERT INTO task_activity_log (task_id, user_id, action, details)

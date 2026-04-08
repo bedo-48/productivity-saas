@@ -2,23 +2,24 @@ import express from "express";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import {
   addTask,
-  getMyTasks,
-  deleteTask,
-  patchTask,
   archiveTaskHandler,
+  deleteTask,
+  getActivityHandler,
+  getCollaboratorsHandler,
+  getMyTasks,
+  patchTask,
+  removeShareHandler,
   restoreTaskHandler,
   shareTaskHandler,
-  getCollaboratorsHandler,
-  removeShareHandler,
 } from "../controllers/taskController.js";
 
 const router = express.Router();
 
-// All routes require auth
 router.use(requireAuth);
 
+router.get("/activity", getActivityHandler);
 router.post("/", addTask);
-router.get("/", getMyTasks);                          // ?status=active|archived|shared
+router.get("/", getMyTasks);
 router.delete("/:id", deleteTask);
 router.patch("/:id", patchTask);
 router.patch("/:id/archive", archiveTaskHandler);

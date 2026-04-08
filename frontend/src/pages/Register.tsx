@@ -1,7 +1,13 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import {register} from "../services/api";
+import { useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import Signature from "./Signature";
+import { register } from "../services/api";
+
+type FieldErrors = {
+  name: string;
+  email: string;
+  password: string;
+};
 
 export default function Register() {
   const [name, setName] = useState("");
@@ -13,31 +19,49 @@ export default function Register() {
 
   const navigate = useNavigate();
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const fieldErrors = useMemo<FieldErrors>(() => {
+    const next = { name: "", email: "", password: "" };
+
+    if (!name.trim()) next.name = "Name is required.";
+    if (!email.trim()) next.email = "Email is required.";
+    if (!password.trim()) {
+      next.password = "Password is required.";
+    } else if (password.trim().length < 8) {
+      next.password = "Password must be at least 8 characters long.";
+    }
+
+    return next;
+  }, [email, name, password]);
+
+  const hasErrors = Boolean(fieldErrors.name || fieldErrors.email || fieldErrors.password);
+
+  const handleRegister = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError("");
+
+    if (hasErrors) {
+      setError(fieldErrors.name || fieldErrors.email || fieldErrors.password);
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const data = await register ( name, email, password );
+      const data = await register(name.trim(), email.trim().toLowerCase(), password.trim());
       localStorage.setItem("token", data.token);
       navigate("/verify-email");
-    } catch (err: any) {
-      setError(err.message || "Registration failed.");
+    } catch (registerError) {
+      setError(registerError instanceof Error ? registerError.message : "Registration failed.");
     } finally {
       setLoading(false);
     }
   };
 
-  const isValid = name.trim() && email.trim() && password.trim();
-
   return (
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
-
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
         .reg-root {
           min-height: 100vh;
           background: #0e0e12;
@@ -50,7 +74,6 @@ export default function Register() {
           position: relative;
           overflow: hidden;
         }
-
         .reg-root::before {
           content: '';
           position: fixed;
@@ -61,7 +84,6 @@ export default function Register() {
           background: radial-gradient(circle, rgba(99,102,241,0.13) 0%, transparent 70%);
           pointer-events: none;
         }
-
         .reg-root::after {
           content: '';
           position: fixed;
@@ -72,10 +94,9 @@ export default function Register() {
           background: radial-gradient(circle, rgba(236,72,153,0.09) 0%, transparent 70%);
           pointer-events: none;
         }
-
         .reg-card {
           width: 100%;
-          max-width: 400px;
+          max-width: 420px;
           background: #16161e;
           border: 1px solid rgba(255,255,255,0.07);
           border-radius: 20px;
@@ -83,14 +104,7 @@ export default function Register() {
           position: relative;
           z-index: 1;
           box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.08);
-          animation: slideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1);
         }
-
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-
         .reg-logo {
           width: 44px;
           height: 44px;
@@ -103,25 +117,21 @@ export default function Register() {
           margin-bottom: 24px;
           box-shadow: 0 8px 20px rgba(99,102,241,0.3);
         }
-
         .reg-title {
           font-family: 'Syne', sans-serif;
           font-size: 26px;
           font-weight: 800;
           color: #fff;
-          letter-spacing: -0.5px;
           margin-bottom: 6px;
         }
-
         .reg-subtitle {
           font-size: 13px;
-          color: #6b6b7e;
+          color: #8e8ea4;
           font-weight: 300;
-          margin-bottom: 32px;
+          margin-bottom: 24px;
+          line-height: 1.6;
         }
-
         .field { margin-bottom: 16px; }
-
         .field-label {
           display: block;
           font-size: 12px;
@@ -131,9 +141,7 @@ export default function Register() {
           letter-spacing: 0.6px;
           margin-bottom: 8px;
         }
-
         .field-wrap { position: relative; }
-
         .field-input {
           width: 100%;
           background: rgba(255,255,255,0.04);
@@ -146,16 +154,17 @@ export default function Register() {
           outline: none;
           transition: border-color 0.2s, background 0.2s;
         }
-
-        .field-input::placeholder { color: #45455a; }
-
+        .field-input.error { border-color: rgba(239,68,68,0.5); }
+        .field-input.has-toggle { padding-right: 52px; }
         .field-input:focus {
           border-color: rgba(99,102,241,0.5);
           background: rgba(99,102,241,0.06);
         }
-
-        .field-input.has-toggle { padding-right: 44px; }
-
+        .field-error {
+          margin-top: 8px;
+          color: #f87171;
+          font-size: 12px;
+        }
         .toggle-pw {
           position: absolute;
           right: 12px;
@@ -163,16 +172,14 @@ export default function Register() {
           transform: translateY(-50%);
           background: none;
           border: none;
-          color: #55556a;
+          color: #818cf8;
           cursor: pointer;
-          font-size: 16px;
-          padding: 2px;
-          transition: color 0.2s;
-          line-height: 1;
         }
-
-        .toggle-pw:hover { color: #9898b8; }
-
+        .password-hint {
+          margin-top: 8px;
+          color: #8e8ea4;
+          font-size: 12px;
+        }
         .submit-btn {
           width: 100%;
           padding: 13px;
@@ -184,7 +191,7 @@ export default function Register() {
           font-size: 15px;
           font-weight: 500;
           cursor: pointer;
-          transition: opacity 0.2s, transform 0.15s;
+          transition: opacity 0.2s;
           margin-top: 8px;
           box-shadow: 0 4px 20px rgba(99,102,241,0.35);
           display: flex;
@@ -192,11 +199,7 @@ export default function Register() {
           justify-content: center;
           gap: 8px;
         }
-
-        .submit-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
-        .submit-btn:active:not(:disabled) { transform: translateY(0); }
         .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
         .spinner {
           width: 16px;
           height: 16px;
@@ -205,9 +208,7 @@ export default function Register() {
           border-radius: 50%;
           animation: spin 0.7s linear infinite;
         }
-
         @keyframes spin { to { transform: rotate(360deg); } }
-
         .error-msg {
           margin-top: 16px;
           padding: 11px 14px;
@@ -217,116 +218,99 @@ export default function Register() {
           color: #f87171;
           font-size: 13px;
           text-align: center;
-          animation: fadeIn 0.25s ease;
         }
-
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-4px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-
         .divider {
           height: 1px;
           background: rgba(255,255,255,0.05);
           margin: 28px 0 20px;
         }
-
         .footer-text {
           text-align: center;
           font-size: 13px;
-          color: #45455a;
+          color: #63637b;
         }
-
         .footer-link {
           color: #818cf8;
           text-decoration: none;
           font-weight: 500;
-          transition: color 0.2s;
         }
-
-        .footer-link:hover { color: #a5b4fc; }
       `}</style>
-
       <div className="reg-root">
         <div className="reg-card">
-
-          <div className="reg-logo">✦</div>
+          <div className="reg-logo">&#10022;</div>
           <div className="reg-title">Create account</div>
-          <div className="reg-subtitle">Start managing your tasks today</div>
-
-          <form onSubmit={handleRegister}>
+          <div className="reg-subtitle">
+            Create your account with a strong password. We&apos;ll send a verification code before you start using the app.
+          </div>
+          <form onSubmit={handleRegister} noValidate>
             <div className="field">
               <label className="field-label">Name</label>
               <div className="field-wrap">
                 <input
-                  className="field-input"
+                  className={`field-input ${fieldErrors.name ? "error" : ""}`}
                   placeholder="Obed Mavungu"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(event) => setName(event.target.value)}
                   autoComplete="name"
-                  required
                 />
               </div>
+              {fieldErrors.name && <div className="field-error">{fieldErrors.name}</div>}
             </div>
-
             <div className="field">
               <label className="field-label">Email</label>
               <div className="field-wrap">
                 <input
-                  className="field-input"
+                  className={`field-input ${fieldErrors.email ? "error" : ""}`}
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(event) => setEmail(event.target.value)}
                   autoComplete="email"
-                  required
                 />
               </div>
+              {fieldErrors.email && <div className="field-error">{fieldErrors.email}</div>}
             </div>
-
             <div className="field">
               <label className="field-label">Password</label>
               <div className="field-wrap">
                 <input
-                  className="field-input has-toggle"
+                  className={`field-input has-toggle ${fieldErrors.password ? "error" : ""}`}
                   type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
+                  placeholder="Create a password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(event) => setPassword(event.target.value)}
                   autoComplete="new-password"
-                  required
                 />
                 <button
                   type="button"
                   className="toggle-pw"
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label="Toggle password visibility"
+                  onClick={() => setShowPassword((value) => !value)}
                 >
-                  {showPassword ? "🙈" : "👁"}
+                  {showPassword ? "Hide" : "Show"}
                 </button>
               </div>
+              {fieldErrors.password ? (
+                <div className="field-error">{fieldErrors.password}</div>
+              ) : (
+                <div className="password-hint">Use at least 8 characters.</div>
+              )}
             </div>
-
-            <button className="submit-btn" type="submit" disabled={loading || !isValid}>
+            <button className="submit-btn" type="submit" disabled={loading || hasErrors}>
               {loading ? (
                 <>
                   <span className="spinner" />
-                  Creating account…
+                  Creating account...
                 </>
               ) : (
                 "Create account"
               )}
             </button>
           </form>
-
-          {error && <div className="error-msg">⚠ {error}</div>}
-
+          {error && <div className="error-msg">{error}</div>}
           <div className="divider" />
           <p className="footer-text">
-            Already have an account?{" "}
-            <Link to="/" className="footer-link">Sign in</Link>
+            Already have an account? <Link to="/" className="footer-link">Sign in</Link>
           </p>
-
         </div>
         <Signature />
       </div>

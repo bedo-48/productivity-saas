@@ -4,17 +4,48 @@ function authHeader(token: string) {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
-// ── AUTH ─────────────────────────────────────────────────────
 export async function login(email: string, password: string) {
   const res = await fetch(`${API}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
+
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || "Login failed");
   }
+
+  return res.json() as Promise<{ message: string; email: string; requiresCode: boolean }>;
+}
+
+export async function verifyLoginCode(email: string, code: string) {
+  const res = await fetch(`${API}/auth/verify-login-code`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, code }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Code verification failed");
+  }
+
+  return res.json() as Promise<{ token: string; message: string }>;
+}
+
+export async function resendLoginCode(email: string) {
+  const res = await fetch(`${API}/auth/resend-login-code`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Failed to resend login code");
+  }
+
   return res.json();
 }
 
@@ -49,16 +80,26 @@ export async function resendCode(token: string) {
     method: "POST",
     headers: authHeader(token),
   });
-  if (!res.ok) throw new Error("Failed to resend code");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Failed to resend code");
+  }
   return res.json();
 }
 
-// ── TASKS ────────────────────────────────────────────────────
 export async function getTasks(token: string, status: "active" | "archived" | "shared" = "active") {
   const res = await fetch(`${API}/tasks?status=${status}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error("Failed to fetch tasks");
+  return res.json();
+}
+
+export async function getActivityLog(token: string) {
+  const res = await fetch(`${API}/tasks/activity`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("Failed to fetch activity log");
   return res.json();
 }
 
@@ -155,7 +196,6 @@ export async function removeCollaborator(taskId: number, userId: number, token: 
   if (!res.ok) throw new Error("Failed to remove collaborator");
 }
 
-// ── ANALYTICS ────────────────────────────────────────────────
 export async function getStats(token: string) {
   const res = await fetch(`${API}/analytics/stats`, {
     headers: { Authorization: `Bearer ${token}` },

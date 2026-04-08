@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
-import { login } from "../services/api";
-import { useNavigate, Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import Signature from "./Signature";
+import { login } from "../services/api";
+
+const PENDING_LOGIN_EMAIL_KEY = "pendingLoginEmail";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -17,22 +19,32 @@ export default function Login() {
     if (token) navigate("/dashboard");
   }, [navigate]);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const fieldErrors = useMemo(() => {
+    const next = { email: "", password: "" };
+    if (!email.trim()) next.email = "Email is required.";
+    if (!password.trim()) next.password = "Password is required.";
+    return next;
+  }, [email, password]);
+
+  const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+
+    if (fieldErrors.email || fieldErrors.password) {
+      setError(fieldErrors.email || fieldErrors.password);
+      return;
+    }
+
     setLoading(true);
-    setMessage("");
 
     try {
-      const data = await login(email, password);
-      localStorage.setItem("token", data.token);
-      if (data.requiresVerification) {
-        navigate("/verify-email");
-      } else {
-        navigate("/dashboard");
-      }
-    } catch (err: any) {
-      setMessage(err.message || "Invalid email or password.");
-      console.error(err);
+      const normalizedEmail = email.trim().toLowerCase();
+      await login(normalizedEmail, password);
+      sessionStorage.setItem(PENDING_LOGIN_EMAIL_KEY, normalizedEmail);
+      navigate("/verify-code");
+    } catch (loginError) {
+      const message = loginError instanceof Error ? loginError.message : "Invalid email or password.";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -42,9 +54,7 @@ export default function Login() {
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
-
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
         .login-root {
           min-height: 100vh;
           background: #0e0e12;
@@ -57,7 +67,6 @@ export default function Login() {
           position: relative;
           overflow: hidden;
         }
-
         .login-root::before {
           content: '';
           position: fixed;
@@ -68,7 +77,6 @@ export default function Login() {
           background: radial-gradient(circle, rgba(99,102,241,0.13) 0%, transparent 70%);
           pointer-events: none;
         }
-
         .login-root::after {
           content: '';
           position: fixed;
@@ -79,10 +87,9 @@ export default function Login() {
           background: radial-gradient(circle, rgba(236,72,153,0.09) 0%, transparent 70%);
           pointer-events: none;
         }
-
         .login-card {
           width: 100%;
-          max-width: 400px;
+          max-width: 420px;
           background: #16161e;
           border: 1px solid rgba(255,255,255,0.07);
           border-radius: 20px;
@@ -90,14 +97,7 @@ export default function Login() {
           position: relative;
           z-index: 1;
           box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.08);
-          animation: slideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1);
         }
-
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-
         .login-logo {
           width: 44px;
           height: 44px;
@@ -110,27 +110,21 @@ export default function Login() {
           margin-bottom: 24px;
           box-shadow: 0 8px 20px rgba(99,102,241,0.3);
         }
-
         .login-title {
           font-family: 'Syne', sans-serif;
           font-size: 26px;
           font-weight: 800;
           color: #fff;
-          letter-spacing: -0.5px;
           margin-bottom: 6px;
         }
-
         .login-subtitle {
           font-size: 13px;
-          color: #6b6b7e;
+          color: #8e8ea4;
           font-weight: 300;
-          margin-bottom: 32px;
+          margin-bottom: 26px;
+          line-height: 1.6;
         }
-
-        .field {
-          margin-bottom: 16px;
-        }
-
+        .field { margin-bottom: 16px; }
         .field-label {
           display: block;
           font-size: 12px;
@@ -140,11 +134,7 @@ export default function Login() {
           letter-spacing: 0.6px;
           margin-bottom: 8px;
         }
-
-        .field-wrap {
-          position: relative;
-        }
-
+        .field-wrap { position: relative; }
         .field-input {
           width: 100%;
           background: rgba(255,255,255,0.04);
@@ -157,18 +147,13 @@ export default function Login() {
           outline: none;
           transition: border-color 0.2s, background 0.2s;
         }
-
-        .field-input::placeholder { color: #45455a; }
-
+        .field-input.has-toggle { padding-right: 44px; }
         .field-input:focus {
           border-color: rgba(99,102,241,0.5);
           background: rgba(99,102,241,0.06);
         }
-
-        .field-input.has-toggle {
-          padding-right: 44px;
-        }
-
+        .field-input.error { border-color: rgba(239,68,68,0.5); }
+        .field-input::placeholder { color: #45455a; }
         .toggle-pw {
           position: absolute;
           right: 12px;
@@ -179,13 +164,12 @@ export default function Login() {
           color: #55556a;
           cursor: pointer;
           font-size: 16px;
-          padding: 2px;
-          transition: color 0.2s;
-          line-height: 1;
         }
-
-        .toggle-pw:hover { color: #9898b8; }
-
+        .field-error {
+          margin-top: 8px;
+          color: #f87171;
+          font-size: 12px;
+        }
         .submit-btn {
           width: 100%;
           padding: 13px;
@@ -205,11 +189,7 @@ export default function Login() {
           justify-content: center;
           gap: 8px;
         }
-
-        .submit-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
-        .submit-btn:active:not(:disabled) { transform: translateY(0); }
         .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
         .spinner {
           width: 16px;
           height: 16px;
@@ -218,11 +198,7 @@ export default function Login() {
           border-radius: 50%;
           animation: spin 0.7s linear infinite;
         }
-
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-
+        @keyframes spin { to { transform: rotate(360deg); } }
         .error-msg {
           margin-top: 16px;
           padding: 11px 14px;
@@ -232,111 +208,86 @@ export default function Login() {
           color: #f87171;
           font-size: 13px;
           text-align: center;
-          animation: fadeIn 0.25s ease;
         }
-
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-4px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-
         .divider {
           height: 1px;
           background: rgba(255,255,255,0.05);
           margin: 28px 0 20px;
         }
-
         .footer-text {
           text-align: center;
           font-size: 13px;
-          color: #45455a;
+          color: #63637b;
         }
-
         .footer-link {
           color: #818cf8;
           text-decoration: none;
           font-weight: 500;
-          transition: color 0.2s;
         }
-
-        .footer-link:hover { color: #a5b4fc; }
       `}</style>
-
       <div className="login-root">
         <div className="login-card">
-
-          <div className="login-logo">✓</div>
+          <div className="login-logo">&#10003;</div>
           <div className="login-title">Welcome back</div>
-          <div className="login-subtitle">Sign in to manage your tasks</div>
-
-          <form onSubmit={handleLogin}>
-            {/* Email */}
+          <div className="login-subtitle">
+            Sign in with your email and password, then confirm the 6-digit code sent to your inbox.
+          </div>
+          <form onSubmit={handleLogin} noValidate>
             <div className="field">
               <label className="field-label">Email</label>
               <div className="field-wrap">
                 <input
-                  className="field-input"
+                  className={`field-input ${fieldErrors.email ? "error" : ""}`}
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(event) => setEmail(event.target.value)}
                   autoComplete="email"
-                  required
                 />
               </div>
+              {fieldErrors.email && <div className="field-error">{fieldErrors.email}</div>}
             </div>
-
-            {/* Password */}
             <div className="field">
               <label className="field-label">Password</label>
               <div className="field-wrap">
                 <input
-                  className="field-input has-toggle"
+                  className={`field-input has-toggle ${fieldErrors.password ? "error" : ""}`}
                   type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
+                  placeholder="Enter your password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(event) => setPassword(event.target.value)}
                   autoComplete="current-password"
-                  required
                 />
                 <button
                   type="button"
                   className="toggle-pw"
-                  onClick={() => setShowPassword((v) => !v)}
+                  onClick={() => setShowPassword((value) => !value)}
                   aria-label="Toggle password visibility"
                 >
-                  {showPassword ? "🙈" : "👁"}
+                  {showPassword ? "Hide" : "Show"}
                 </button>
               </div>
+              {fieldErrors.password && <div className="field-error">{fieldErrors.password}</div>}
             </div>
-
-            <button
-              className="submit-btn"
-              type="submit"
-              disabled={loading || !email.trim() || !password.trim()}
-            >
+            <button className="submit-btn" type="submit" disabled={loading}>
               {loading ? (
                 <>
                   <span className="spinner" />
-                  Signing in…
+                  Sending code...
                 </>
               ) : (
-                "Sign in"
+                "Continue"
               )}
             </button>
           </form>
-
-          {message && <div className="error-msg">⚠ {message}</div>}
-
+          {error && <div className="error-msg">{error}</div>}
           <div className="divider" />
           <p className="footer-text" style={{ marginBottom: "10px" }}>
             <Link to="/forgot-password" className="footer-link">Forgot password?</Link>
           </p>
           <p className="footer-text">
-            Don't have an account?{" "}
-            <Link to="/register" className="footer-link">Create one</Link>
+            Don&apos;t have an account? <Link to="/register" className="footer-link">Create one</Link>
           </p>
-
         </div>
         <Signature />
       </div>

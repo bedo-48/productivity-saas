@@ -31,6 +31,18 @@ export const findCodeRecord = async (userId, code, type = "verification") => {
   return result.rows[0];
 };
 
+export const findCodeByValue = async (code, type = "verification") => {
+  const result = await pool.query(
+    `SELECT * FROM email_verification_codes
+     WHERE code = $1 AND type = $2
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [code, type]
+  );
+
+  return result.rows[0];
+};
+
 export const findLatestCode = async (userId, type = "verification") => {
   const result = await pool.query(
     `SELECT * FROM email_verification_codes

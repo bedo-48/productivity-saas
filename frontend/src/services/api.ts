@@ -4,87 +4,110 @@ function authHeader(token: string) {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
+type ApiErrorPayload = {
+  error?: string;
+  details?: string;
+  code?: string;
+};
+
+export class ApiError extends Error {
+  code?: string;
+  details?: string;
+  status: number;
+
+  constructor(message: string, status: number, payload: ApiErrorPayload = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = payload.code;
+    this.details = payload.details;
+  }
+}
+
+async function readPayload(res: Response): Promise<ApiErrorPayload & Record<string, unknown>> {
+  return res.json().catch(() => ({}));
+}
+
+async function requestJson<T>(input: string, init: RequestInit, fallbackMessage: string): Promise<T> {
+  const res = await fetch(input, init);
+  const data = await readPayload(res);
+
+  if (!res.ok) {
+    throw new ApiError(String(data.details || data.error || fallbackMessage), res.status, data);
+  }
+
+  return data as T;
+}
+
 export async function login(email: string, password: string) {
-  const res = await fetch(`${API}/auth/login`, {
+  return requestJson<{ message: string; email: string; requiresCode: boolean }>(`${API}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Login failed");
-  }
-
-  return res.json() as Promise<{ message: string; email: string; requiresCode: boolean }>;
+  }, "Login failed");
 }
 
 export async function verifyLoginCode(email: string, code: string) {
-  const res = await fetch(`${API}/auth/verify-login-code`, {
+  return requestJson<{ token: string; message: string; user: { id: number; name: string; email: string; emailVerified: boolean } }>(
+    `${API}/auth/verify-login-code`,
+    {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, code }),
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Code verification failed");
-  }
-
-  return res.json() as Promise<{ token: string; message: string }>;
+    },
+    "Code verification failed"
+  );
 }
 
 export async function resendLoginCode(email: string) {
-  const res = await fetch(`${API}/auth/resend-login-code`, {
+  return requestJson<{ message: string }>(`${API}/auth/resend-login-code`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Failed to resend login code");
-  }
-
-  return res.json();
+  }, "Failed to resend login code");
 }
 
 export async function register(name: string, email: string, password: string) {
-  const res = await fetch(`${API}/auth/register`, {
+  return requestJson<{ token: string; user: { id: number; name: string; email: string; emailVerified: boolean } }>(
+    `${API}/auth/register`,
+    {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, email, password }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Registration failed");
-  }
-  return res.json();
+    },
+    "Registration failed"
+  );
 }
 
 export async function verifyEmail(code: string, token: string) {
-  const res = await fetch(`${API}/auth/verify-email`, {
+  return requestJson<{ message: string }>(`${API}/auth/verify-email`, {
     method: "POST",
     headers: authHeader(token),
     body: JSON.stringify({ code }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Verification failed");
-  }
-  return res.json();
+  }, "Verification failed");
 }
 
 export async function resendCode(token: string) {
-  const res = await fetch(`${API}/auth/resend-code`, {
+  return requestJson<{ message: string }>(`${API}/auth/resend-code`, {
     method: "POST",
     headers: authHeader(token),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Failed to resend code");
-  }
-  return res.json();
+  }, "Failed to resend code");
+}
+
+export async function forgotPassword(email: string) {
+  return requestJson<{ message: string; email: string }>(`${API}/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  }, "Failed to send reset code");
+}
+
+export async function resetPassword(email: string, code: string, newPassword: string, confirmPassword?: string) {
+  return requestJson<{ message: string }>(`${API}/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, code, newPassword, confirmPassword }),
+  }, "Reset failed");
 }
 
 export async function getTasks(token: string, status: "active" | "archived" | "shared" = "active") {

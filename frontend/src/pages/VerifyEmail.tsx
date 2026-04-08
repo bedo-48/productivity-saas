@@ -50,16 +50,24 @@ export default function VerifyEmail() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const code = digits.join("");
-    if (code.length < 6) return;
+    if (code.length !== 6) {
+      setError("Enter the full 6-digit verification code.");
+      return;
+    }
     setLoading(true);
     setError("");
+    setSuccess("");
     try {
       await verifyEmail(code, token);
       setSuccess("Email verified!");
       setIsOpening(true);
       setTimeout(() => navigate("/dashboard"), 2000);
-    } catch (err: any) {
-      setError(err.message || "Invalid code");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Verification failed.";
+      setError(message);
+      if (message.toLowerCase().includes("token")) {
+        localStorage.removeItem("token");
+      }
       setDigits(["", "", "", "", "", ""]);
       refs.current[0]?.focus();
     } finally {
@@ -74,8 +82,8 @@ export default function VerifyEmail() {
       setCooldown(60);
       setError("");
       setSuccess("New code sent to your email!");
-    } catch {
-      setError("Failed to resend code");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resend code.");
     }
   };
 

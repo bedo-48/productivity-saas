@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import ClosedNotebookAuthLayout from "../components/ClosedNotebookAuthLayout";
-
-const API = import.meta.env.VITE_API_URL;
+import { forgotPassword } from "../services/api";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -10,21 +9,24 @@ export default function ForgotPassword() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setError("Email is required.");
+      return;
+    }
+
     setLoading(true);
     setError("");
+
     try {
-      const res = await fetch(`${API}/auth/forgot-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send code");
+      await forgotPassword(normalizedEmail);
+      setEmail(normalizedEmail);
       setSent(true);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send reset code.");
     } finally {
       setLoading(false);
     }
@@ -156,10 +158,10 @@ export default function ForgotPassword() {
         }
       `}</style>
       {!sent ? (
-        <form className="auth-form" onSubmit={handleSubmit}>
+        <form className="auth-form" onSubmit={handleSubmit} noValidate>
           <div className="auth-title">Reset password</div>
           <div className="auth-subtitle">
-            Enter your email and we'll send you a reset link.
+            Enter your email and we&apos;ll send you a 6-digit password reset code.
           </div>
           <div className="field">
             <label className="field-label">Email</label>
@@ -168,8 +170,7 @@ export default function ForgotPassword() {
               type="email"
               placeholder="you@example.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
+              onChange={(event) => setEmail(event.target.value)}
             />
           </div>
           <button className="submit-btn" type="submit" disabled={loading || !email.trim()}>
@@ -182,12 +183,16 @@ export default function ForgotPassword() {
         </form>
       ) : (
         <div className="success-box">
-          <div className="success-icon">✓</div>
+          <div className="success-icon">OK</div>
           <div className="success-title">Check your email</div>
           <div className="success-text">
-            We've sent a password reset link to {email}. Click the link to reset your password.
+            We sent a 6-digit password reset code to {email}. Enter it on the reset password page to choose a new password.
           </div>
-          <Link to="/" className="auth-link">Back to sign in</Link>
+          <div className="auth-links">
+            <Link to={`/reset-password?email=${encodeURIComponent(email)}`} className="auth-link">Continue to reset password</Link>
+            <br />
+            <Link to="/" className="auth-link">Back to sign in</Link>
+          </div>
         </div>
       )}
     </ClosedNotebookAuthLayout>

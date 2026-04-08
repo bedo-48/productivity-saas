@@ -4,7 +4,11 @@ export const requireAuth = (req, res, next) => {
   try {
     const header = req.headers.authorization; // "Bearer <token>"
     if (!header || !header.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Missing or invalid Authorization header" });
+      return res.status(401).json({
+        error: "Authentication failed",
+        details: "Missing or invalid Authorization header.",
+        code: "AUTH_HEADER_INVALID",
+      });
     }
 
     const token = header.split(" ")[1];
@@ -13,6 +17,11 @@ export const requireAuth = (req, res, next) => {
     req.user = { id: payload.id };
     next();
   } catch (err) {
-    return res.status(401).json({ error: "Invalid or expired token" });
+    console.error("[auth:middleware] Token verification failed", { message: err.message });
+    return res.status(401).json({
+      error: "Authentication failed",
+      details: "Invalid or expired token.",
+      code: "TOKEN_INVALID_OR_EXPIRED",
+    });
   }
 };

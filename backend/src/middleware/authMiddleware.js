@@ -1,5 +1,22 @@
 import jwt from "jsonwebtoken";
 
+export const optionalAuth = (req, _res, next) => {
+  try {
+    const header = req.headers.authorization;
+    if (!header || !header.startsWith("Bearer ")) {
+      return next();
+    }
+
+    const token = header.split(" ")[1];
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = { id: payload.id };
+    next();
+  } catch (err) {
+    console.error("[auth:middleware] Optional token verification failed", { message: err.message });
+    next();
+  }
+};
+
 export const requireAuth = (req, res, next) => {
   try {
     const header = req.headers.authorization; // "Bearer <token>"

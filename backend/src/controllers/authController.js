@@ -390,16 +390,34 @@ export const sendVerification = async (req, res) => {
 export const verifyEmail = async (req, res) => {
   try {
     const code = normalizeCode(req.body.code);
-    const userId = req.user.id;
+    const email = normalizeEmail(req.body.email);
 
     const codeValidation = validateSixDigitCode(code);
     if (codeValidation) {
       return sendAuthError(res, codeValidation.status, codeValidation.error, codeValidation.details, codeValidation.code);
     }
 
-    const user = await findUserById(userId);
+    let user = null;
+
+    if (req.user?.id) {
+      user = await findUserById(req.user.id);
+    } else if (email) {
+      user = await findUserByEmail(email);
+    } else {
+      return sendAuthError(
+        res,
+        400,
+        "Verification failed",
+        "Email is required when no active verification session is available.",
+        "EMAIL_MISSING"
+      );
+    }
+
     if (!user) {
-      logAuthFailure("verify-email", "Verification record not found because the user account no longer exists.", { userId });
+      logAuthFailure("verify-email", "Verification record not found because the user account no longer exists.", {
+        userId: req.user?.id,
+        email,
+      });
       return sendAuthError(
         res,
         404,
@@ -422,7 +440,7 @@ export const verifyEmail = async (req, res) => {
     }
 
     await markCodeUsed(resolution.record.id);
-    await markEmailVerified(userId);
+    await markEmailVerified(user.id);
 
     return res.json({ message: "Email verified successfully." });
   } catch (err) {

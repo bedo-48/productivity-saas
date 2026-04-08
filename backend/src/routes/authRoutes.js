@@ -10,7 +10,7 @@ import {
   verifyEmail,
   verifyLoginCode,
 } from "../controllers/authController.js";
-import { requireAuth } from "../middleware/authMiddleware.js";
+import { optionalAuth, requireAuth } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -30,7 +30,7 @@ router.route("/login").post(login).all(methodNotAllowed(["POST"]));
 router.route("/verify-login-code").post(verifyLoginCode).all(methodNotAllowed(["POST"]));
 router.route("/resend-login-code").post(resendLoginCode).all(methodNotAllowed(["POST"]));
 router.route("/send-verification").post(sendVerification).all(methodNotAllowed(["POST"]));
-router.route("/verify-email").post(requireAuth, verifyEmail).all(methodNotAllowed(["POST"]));
+router.route("/verify-email").post(optionalAuth, verifyEmail).all(methodNotAllowed(["POST"]));
 router.route("/resend-code").post(requireAuth, resendCode).all(methodNotAllowed(["POST"]));
 router.route("/forgot-password").post(forgotPassword).all(methodNotAllowed(["POST"]));
 router.route("/reset-password").post(resetPassword).all(methodNotAllowed(["POST"]));

@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import ClosedNotebookAuthLayout from "../components/ClosedNotebookAuthLayout";
-import { verifyEmail, resendCode } from "../services/api";
+import { sendVerification, verifyEmail, resendCode } from "../services/api";
+
+const PENDING_VERIFICATION_EMAIL_KEY = "pendingVerificationEmail";
 
 export default function VerifyEmail() {
   const [digits, setDigits] = useState(["", "", "", "", "", ""]);
@@ -14,14 +16,15 @@ export default function VerifyEmail() {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const navigate = useNavigate();
   const token = localStorage.getItem("token") || "";
+  const pendingEmail = sessionStorage.getItem(PENDING_VERIFICATION_EMAIL_KEY) || "";
 
   useEffect(() => {
-    if (!token) {
+    if (!token && !pendingEmail) {
       navigate("/");
       return;
     }
     refs.current[0]?.focus();
-  }, [navigate, token]);
+  }, [navigate, pendingEmail, token]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -63,7 +66,8 @@ export default function VerifyEmail() {
     setError("");
     setSuccess("");
     try {
-      await verifyEmail(code, token);
+      await verifyEmail(code, token || undefined, pendingEmail || undefined);
+      sessionStorage.removeItem(PENDING_VERIFICATION_EMAIL_KEY);
       setSuccess("Email verified!");
       setIsOpening(true);
       setTimeout(() => navigate("/dashboard"), 2000);
@@ -84,7 +88,13 @@ export default function VerifyEmail() {
     if (cooldown > 0 || resending) return;
     setResending(true);
     try {
-      await resendCode(token);
+      if (token) {
+        await resendCode(token);
+      } else if (pendingEmail) {
+        await sendVerification(pendingEmail);
+      } else {
+        throw new Error("No email is available for this verification request.");
+      }
       setCooldown(60);
       setError("");
       setSuccess("New code sent to your email!");
@@ -218,7 +228,7 @@ export default function VerifyEmail() {
       <form className="auth-form" onSubmit={handleSubmit}>
         <div className="auth-title">Check your email</div>
         <div className="auth-subtitle">
-          We sent a 6-digit code to your email. Enter it below to verify your account.
+          We sent a 6-digit code to {pendingEmail || "your email"}. Enter it below to verify your account.
         </div>
         {error && <div className="error-msg">{error}</div>}
         {success && <div className="success-msg">{success}</div>}

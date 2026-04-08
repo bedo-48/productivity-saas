@@ -79,11 +79,11 @@ export async function register(name: string, email: string, password: string) {
   );
 }
 
-export async function verifyEmail(code: string, token: string) {
+export async function verifyEmail(code: string, token?: string, email?: string) {
   return requestJson<{ message: string }>(`${API}/auth/verify-email`, {
     method: "POST",
-    headers: authHeader(token),
-    body: JSON.stringify({ code }),
+    headers: token ? authHeader(token) : { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, email }),
   }, "Verification failed");
 }
 
@@ -100,6 +100,14 @@ export async function forgotPassword(email: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   }, "Failed to send reset code");
+}
+
+export async function sendVerification(email: string) {
+  return requestJson<{ message: string }>(`${API}/auth/send-verification`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  }, "Failed to send verification code");
 }
 
 export async function resetPassword(email: string, code: string, newPassword: string, confirmPassword?: string) {

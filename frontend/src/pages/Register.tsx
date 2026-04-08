@@ -9,6 +9,8 @@ type FieldErrors = {
   password: string;
 };
 
+const PENDING_VERIFICATION_EMAIL_KEY = "pendingVerificationEmail";
+
 export default function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -47,8 +49,10 @@ export default function Register() {
     setLoading(true);
 
     try {
-      const data = await register(name.trim(), email.trim().toLowerCase(), password.trim());
+      const normalizedEmail = email.trim().toLowerCase();
+      const data = await register(name.trim(), normalizedEmail, password.trim());
       localStorage.setItem("token", data.token);
+      sessionStorage.setItem(PENDING_VERIFICATION_EMAIL_KEY, normalizedEmail);
       navigate("/verify-email");
     } catch (registerError) {
       setError(registerError instanceof Error ? registerError.message : "Registration failed.");

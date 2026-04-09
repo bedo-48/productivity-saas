@@ -61,6 +61,35 @@ function logAuthException(context, err, meta = {}) {
   console.error(`[auth:${context}] Unexpected error`, { message: err.message, ...meta, stack: err.stack });
 }
 
+function getEmailDeliveryError(err, fallbackError, fallbackDetails, fallbackCode) {
+  const message = String(err?.message || "").trim();
+
+  if (message.includes("Email delivery is not configured")) {
+    return {
+      status: 500,
+      error: fallbackError,
+      details: "Email delivery is not configured on the server. Add a valid RESEND_API_KEY and try again.",
+      code: "EMAIL_DELIVERY_NOT_CONFIGURED",
+    };
+  }
+
+  if (message) {
+    return {
+      status: 502,
+      error: fallbackError,
+      details: `The email provider could not send the code. ${message}`,
+      code: "EMAIL_DELIVERY_FAILED",
+    };
+  }
+
+  return {
+    status: 500,
+    error: fallbackError,
+    details: fallbackDetails,
+    code: fallbackCode,
+  };
+}
+
 function validateSixDigitCode(code) {
   if (!code) {
     return {
@@ -270,13 +299,13 @@ export const login = async (req, res) => {
     });
   } catch (err) {
     logAuthException("login", err);
-    return sendAuthError(
-      res,
-      500,
+    const emailError = getEmailDeliveryError(
+      err,
       "Login failed",
       "The login verification code could not be sent.",
       "LOGIN_CODE_SEND_FAILED"
     );
+    return sendAuthError(res, emailError.status, emailError.error, emailError.details, emailError.code);
   }
 };
 
@@ -361,7 +390,13 @@ export const resendLoginCode = async (req, res) => {
     return res.json({ message: "A new login code was sent." });
   } catch (err) {
     logAuthException("resend-login-code", err);
-    return sendAuthError(res, 500, "Resend failed", "The login code could not be resent.", "LOGIN_CODE_RESEND_FAILED");
+    const emailError = getEmailDeliveryError(
+      err,
+      "Resend failed",
+      "The login code could not be resent.",
+      "LOGIN_CODE_RESEND_FAILED"
+    );
+    return sendAuthError(res, emailError.status, emailError.error, emailError.details, emailError.code);
   }
 };
 
@@ -388,7 +423,13 @@ export const sendVerification = async (req, res) => {
     return res.json({ message: "Verification code sent." });
   } catch (err) {
     logAuthException("send-verification", err);
-    return sendAuthError(res, 500, "Verification failed", "The verification code could not be sent.", "VERIFICATION_CODE_SEND_FAILED");
+    const emailError = getEmailDeliveryError(
+      err,
+      "Verification failed",
+      "The verification code could not be sent.",
+      "VERIFICATION_CODE_SEND_FAILED"
+    );
+    return sendAuthError(res, emailError.status, emailError.error, emailError.details, emailError.code);
   }
 };
 
@@ -477,13 +518,13 @@ export const forgotPassword = async (req, res) => {
     return res.json({ message: "A password reset code was sent.", email });
   } catch (err) {
     logAuthException("forgot-password", err);
-    return sendAuthError(
-      res,
-      500,
+    const emailError = getEmailDeliveryError(
+      err,
       "Password reset failed",
       "The password reset code could not be sent.",
       "RESET_CODE_SEND_FAILED"
     );
+    return sendAuthError(res, emailError.status, emailError.error, emailError.details, emailError.code);
   }
 };
 
@@ -583,6 +624,12 @@ export const resendCode = async (req, res) => {
     return res.json({ message: "New code sent." });
   } catch (err) {
     logAuthException("resend-code", err, { userId: req.user?.id });
-    return sendAuthError(res, 500, "Resend failed", "The verification code could not be resent.", "VERIFICATION_CODE_RESEND_FAILED");
+    const emailError = getEmailDeliveryError(
+      err,
+      "Resend failed",
+      "The verification code could not be resent.",
+      "VERIFICATION_CODE_RESEND_FAILED"
+    );
+    return sendAuthError(res, emailError.status, emailError.error, emailError.details, emailError.code);
   }
 };

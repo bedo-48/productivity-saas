@@ -14,8 +14,38 @@ import { optionalAuth, requireAuth } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
+const browserRouteFallbacks = {
+  "/register": "/register",
+  "/login": "/login",
+  "/verify-login-code": "/verify-code",
+  "/send-verification": "/verify-email",
+  "/verify-email": "/verify-email",
+  "/forgot-password": "/forgot-password",
+  "/reset-password": "/reset-password",
+};
+
+function isBrowserNavigation(req) {
+  const accept = String(req.headers.accept || "");
+  const fetchMode = String(req.headers["sec-fetch-mode"] || "");
+  return accept.includes("text/html") || fetchMode === "navigate";
+}
+
 function methodNotAllowed(allowedMethods) {
   return (req, res) => {
+    if (req.method === "GET" && isBrowserNavigation(req)) {
+      const frontendBase = String(process.env.FRONTEND_URL || "").replace(/\/+$/, "");
+      const frontendPath = browserRouteFallbacks[req.path];
+
+      if (frontendBase && frontendPath) {
+        console.warn("[auth:route] Browser opened API endpoint directly.", {
+          method: req.method,
+          path: `${req.baseUrl}${req.path}`,
+          redirectTo: `${frontendBase}${frontendPath}`,
+        });
+        return res.redirect(302, `${frontendBase}${frontendPath}`);
+      }
+    }
+
     res.set("Allow", allowedMethods.join(", "));
     return res.status(405).json({
       error: "Route not found or incorrect method.",

@@ -1,4 +1,4 @@
-const API = import.meta.env.VITE_API_URL;
+const API = import.meta.env.VITE_API_URL?.replace(/\/+$/, "");
 
 function authHeader(token: string) {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -29,7 +29,27 @@ async function readPayload(res: Response): Promise<ApiErrorPayload & Record<stri
 }
 
 async function requestJson<T>(input: string, init: RequestInit, fallbackMessage: string): Promise<T> {
-  const res = await fetch(input, init);
+  if (!API) {
+    throw new ApiError(
+      "The frontend API URL is missing. Set VITE_API_URL before using authentication.",
+      500,
+      { code: "API_URL_MISSING", details: "VITE_API_URL is not configured." }
+    );
+  }
+
+  let res: Response;
+
+  try {
+    res = await fetch(input, init);
+  } catch (error) {
+    const details = error instanceof Error ? error.message : "Network request failed before the server responded.";
+    throw new ApiError(
+      "Unable to reach the server. Check the API URL, backend status, or CORS configuration.",
+      0,
+      { code: "NETWORK_REQUEST_FAILED", details }
+    );
+  }
+
   const data = await readPayload(res);
 
   if (!res.ok) {

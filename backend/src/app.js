@@ -11,6 +11,40 @@ import pool from "./config/db.js";
 
 const app = express();
 
+function normalizeOrigin(origin) {
+  return String(origin || "").trim().replace(/\/+$/, "");
+}
+
+function getAllowedOrigins() {
+  const configuredOrigins = [process.env.FRONTEND_URL, process.env.FRONTEND_URLS]
+    .filter(Boolean)
+    .flatMap((value) => String(value).split(","))
+    .map(normalizeOrigin)
+    .filter(Boolean);
+
+  return new Set([
+    ...configuredOrigins,
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+  ]);
+}
+
+function isAllowedOrigin(origin) {
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (!normalizedOrigin) return true;
+
+  if (getAllowedOrigins().has(normalizedOrigin)) {
+    return true;
+  }
+
+  try {
+    const { hostname, protocol } = new URL(normalizedOrigin);
+    return (protocol === "https:" || protocol === "http:") && hostname.endsWith(".vercel.app");
+  } catch {
+    return false;
+  }
+}
+
 // ── Trust Render's proxy (required for rate-limit + correct IPs)
 app.set("trust proxy", 1);
 
@@ -23,7 +57,18 @@ app.use(morgan("dev"));
 // ── CORS (only allow your frontend)
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || true,
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) {
+        return callback(null, true);
+      }
+
+      console.error("[cors] Blocked request from origin", {
+        origin,
+        allowedOrigins: Array.from(getAllowedOrigins()),
+      });
+
+      return callback(new Error("CORS origin not allowed."));
+    },
     credentials: true,
   })
 );

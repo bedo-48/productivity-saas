@@ -160,19 +160,21 @@ async function resolveCodeRecord({ user, code, type, context, missingRequestMess
 
 async function createAndSendCode(user, type) {
   const code = generateCode();
-  await createCode(user.id, code, type);
 
   if (type === "login") {
     await sendLoginCodeEmail(user.email, code);
+    await createCode(user.id, code, type);
     return;
   }
 
   if (type === "password_reset") {
     await sendPasswordResetEmail(user.email, code);
+    await createCode(user.id, code, type);
     return;
   }
 
   await sendVerificationEmail(user.email, code);
+  await createCode(user.id, code, type);
 }
 
 export const register = async (req, res) => {
@@ -213,7 +215,10 @@ export const register = async (req, res) => {
     try {
       await createAndSendCode(user, "verification");
     } catch (emailError) {
-      console.warn("Verification email send failed:", emailError.message);
+      console.warn("[auth:register] Verification email send failed", {
+        email: normalizedEmail,
+        message: emailError.message,
+      });
     }
 
     return res.status(201).json({ user: serializeUser(user), token });

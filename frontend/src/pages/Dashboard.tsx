@@ -14,8 +14,11 @@ import {
   shareTask,
   toggleTask,
 } from "../services/api";
+import { useAuth } from "../auth/AuthContext";
+import { getFreshIdToken } from "../services/firebase";
 
 const SOCKET_URL = import.meta.env.VITE_API_URL || "";
+const USE_MOCK_DASHBOARD = !SOCKET_URL;
 const COMPLETE_STRIKE_MS = 700;
 const COMPLETE_FADE_MS = 850;
 const DELETE_FADE_MS = 320;
@@ -163,7 +166,9 @@ export default function Dashboard() {
   const [exitingTasks, setExitingTasks] = useState<Record<number, TaskExitState>>({});
   const navigate = useNavigate();
   const location = useLocation();
-  const token = localStorage.getItem("token") || "";
+  const { user, logout } = useAuth();
+  // Legacy placeholder — api.ts now always pulls a fresh Firebase ID token.
+  const token = "";
   const section = useMemo(() => getSection(location.pathname), [location.pathname]);
   const sectionCopy = useMemo(() => getSectionCopy(section), [section]);
   const timeoutsRef = useRef<number[]>([]);
@@ -198,21 +203,47 @@ export default function Dashboard() {
   }, [token]);
 
   useEffect(() => {
-    if (!token) { navigate("/"); return; }
     void loadInsights();
-    const socket = io(SOCKET_URL, { auth: { token }, transports: ["websocket"] });
-    socket.on("task:updated", ({ task }: { task: Task }) => { setTasks((current) => current.map((item) => (item.id === task.id ? { ...item, ...task } : item))); if (section === "active" && task.completed) beginCompletionSequence(task.id); if (section === "activity") void loadActivity(); });
-    socket.on("task:deleted", ({ taskId }: { taskId: number }) => { removeTaskFromState(taskId); if (section === "activity") void loadActivity(); });
-    socket.on("task:shared", () => { void loadTasks("shared"); void loadInsights(); void loadActivity(); });
-    return () => { socket.disconnect(); timeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId)); timeoutsRef.current = []; };
-  }, [beginCompletionSequence, loadActivity, loadInsights, loadTasks, navigate, removeTaskFromState, section, token]);
+    if (USE_MOCK_DASHBOARD || !user) {
+      return () => {
+        timeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+        timeoutsRef.current = [];
+      };
+    }
+
+    let cancelled = false;
+    let socket: ReturnType<typeof io> | null = null;
+
+    (async () => {
+      const socketToken = await getFreshIdToken();
+      if (cancelled || !socketToken) return;
+      socket = io(SOCKET_URL, { auth: { token: socketToken }, transports: ["websocket"] });
+      socket.on("task:updated", ({ task }: { task: Task }) => { setTasks((current) => current.map((item) => (item.id === task.id ? { ...item, ...task } : item))); if (section === "active" && task.completed) beginCompletionSequence(task.id); if (section === "activity") void loadActivity(); });
+      socket.on("task:deleted", ({ taskId }: { taskId: number }) => { removeTaskFromState(taskId); if (section === "activity") void loadActivity(); });
+      socket.on("task:shared", () => { void loadTasks("shared"); void loadInsights(); void loadActivity(); });
+    })();
+
+    return () => {
+      cancelled = true;
+      if (socket) socket.disconnect();
+      timeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      timeoutsRef.current = [];
+    };
+  }, [beginCompletionSequence, loadActivity, loadInsights, loadTasks, navigate, removeTaskFromState, section, user]);
 
   useEffect(() => { if (section === "activity") void loadActivity(); else void loadTasks(section); }, [loadActivity, loadTasks, section]);
 
   const doneTasks = useMemo(() => tasks.filter((task) => task.completed || completingTaskIds.includes(task.id)), [completingTaskIds, tasks]);
   const progress = tasks.length > 0 ? (doneTasks.length / tasks.length) * 100 : 0;
 
-  const handleLogout = () => { localStorage.removeItem("token"); sessionStorage.removeItem("pendingLoginEmail"); navigate("/"); };
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } finally {
+      sessionStorage.removeItem("pendingLoginEmail");
+      navigate("/login", { replace: true });
+    }
+  };
   const handleAddTask = async (event: React.FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!title.trim()) return; setAdding(true); try { const newTask = await createTask(title.trim(), token, { priority }); setTasks((current) => [newTask, ...current]); setTitle(""); setRecentlyAddedTaskId(newTask.id); triggerPencil(); rememberTimeout(() => setRecentlyAddedTaskId((current) => (current === newTask.id ? null : current)), 1500); void loadInsights(); void loadActivity(); } catch (error) { console.error(error); } finally { setAdding(false); } };
   const handleToggle = async (taskId: number, completed: boolean) => { try { await toggleTask(taskId, !completed, token); setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, completed: !completed } : task))); if (!completed && section === "active") beginCompletionSequence(taskId); else clearTaskEffects(taskId); void loadInsights(); void loadActivity(); } catch (error) { console.error(error); } };
   const handleDelete = async (taskId: number) => { try { await deleteTask(taskId, token); beginExit(taskId, "deleting", DELETE_FADE_MS); void loadInsights(); void loadActivity(); } catch (error) { console.error(error); } };
@@ -226,7 +257,7 @@ export default function Dashboard() {
         <header className="topbar"><div><div className="topbar-kicker">Paper productivity</div><div className="topbar-logo">TaskLedger</div></div><button className="logout-btn" type="button" onClick={handleLogout}>Sign out</button></header>
         <ProductivityPanel stats={stats} neglected={neglected} suggestions={suggestions} loading={insightsLoading} />
         <div className="dashboard-shell">
-          <aside className="dashboard-menu"><div className="menu-title">Workspace</div><p className="menu-copy">Move between active work, shared items, archived notes, and recent activity from one clear menu.</p><div className="menu-nav">{MENU_ITEMS.map((item) => <button key={item.section} type="button" className={`nav-link ${section === item.section ? "active" : ""}`} onClick={() => navigate(item.path)}><div className="nav-link-title">{item.label}</div><div className="nav-link-sub">{item.description}</div></button>)}</div><div className="menu-pill-row"><span className="menu-pill">JWT protected</span><span className="menu-pill">Email code login</span><span className="menu-pill">Task CRUD intact</span></div></aside>
+          <aside className="dashboard-menu"><div className="menu-title">Workspace</div><p className="menu-copy">Move between active work, shared items, archived notes, and recent activity from one clear menu.</p><div className="menu-nav">{MENU_ITEMS.map((item) => <button key={item.section} type="button" className={`nav-link ${section === item.section ? "active" : ""}`} onClick={() => navigate(item.path)}><div className="nav-link-title">{item.label}</div><div className="nav-link-sub">{item.description}</div></button>)}</div><div className="menu-pill-row"><span className="menu-pill">{USE_MOCK_DASHBOARD ? "Demo mode" : "Live API"}</span><span className="menu-pill">{USE_MOCK_DASHBOARD ? "Auth bypassed" : "Firebase protected"}</span><span className="menu-pill">Task CRUD intact</span></div></aside>
           <section className="notebook-panel"><PencilDecoration active={pencilActive && section === "active"} /><div className="notebook-page"><div className="notebook-margin" aria-hidden="true" /><div className="notebook-header"><div><p className="notebook-kicker">{sectionCopy.kicker}</p><h1>{sectionCopy.title}</h1><p className="section-copy">{sectionCopy.description}</p></div></div>
             {section === "active" && <div className="section-card">New tasks land on the page like fresh notes. Completing one draws a line through it, then lets it drift away.</div>}
             {section === "shared" && <div className="section-card">This section is ready for collaboration review now, and leaves space for richer shared-work features later.</div>}

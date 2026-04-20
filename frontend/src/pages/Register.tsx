@@ -1,274 +1,129 @@
-import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
+import {
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  updateProfile,
+} from "firebase/auth";
 import ClosedNotebookAuthLayout from "../components/ClosedNotebookAuthLayout";
-import { register } from "../services/api";
-
-type FieldErrors = {
-  name: string;
-  email: string;
-  password: string;
-};
-
-const PENDING_VERIFICATION_EMAIL_KEY = "pendingVerificationEmail";
+import { useAuth } from "../auth/AuthContext";
+import { auth } from "../services/firebase";
+import { humanizeFirebaseError } from "../auth/firebaseErrors";
 
 export default function Register() {
+  const navigate = useNavigate();
+  const { user, initializing, configured } = useAuth();
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const navigate = useNavigate();
+  useEffect(() => {
+    if (!initializing && user) navigate("/dashboard", { replace: true });
+  }, [initializing, user, navigate]);
 
-  const fieldErrors = useMemo<FieldErrors>(() => {
-    const next = { name: "", email: "", password: "" };
+  if (user) return <Navigate to="/dashboard" replace />;
 
-    if (!name.trim()) next.name = "Name is required.";
-    if (!email.trim()) next.email = "Email is required.";
-    if (!password.trim()) {
-      next.password = "Password is required.";
-    } else if (password.trim().length < 8) {
-      next.password = "Password must be at least 8 characters long.";
-    }
-
-    return next;
-  }, [email, name, password]);
-
-  const hasErrors = Boolean(fieldErrors.name || fieldErrors.email || fieldErrors.password);
-
-  const handleRegister = async (event: React.FormEvent<HTMLFormElement>) => {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
-
-    if (hasErrors) {
-      setError(fieldErrors.name || fieldErrors.email || fieldErrors.password);
+    if (!auth) {
+      setError("Firebase is not configured. Check VITE_FIREBASE_* env vars.");
       return;
     }
-
-    setLoading(true);
-
-    try {
-      const normalizedEmail = email.trim().toLowerCase();
-      const data = await register(name.trim(), normalizedEmail, password.trim());
-      localStorage.setItem("token", data.token);
-      sessionStorage.setItem(PENDING_VERIFICATION_EMAIL_KEY, normalizedEmail);
-      navigate("/verify-email");
-    } catch (registerError) {
-      setError(registerError instanceof Error ? registerError.message : "Registration failed.");
-    } finally {
-      setLoading(false);
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
     }
-  };
+    setError(null);
+    setSubmitting(true);
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      if (name.trim()) {
+        await updateProfile(cred.user, { displayName: name.trim() });
+      }
+      // Fire a verification email but don't block the flow on it.
+      sendEmailVerification(cred.user).catch(() => {});
+      // onIdTokenChanged will pick up the new session.
+    } catch (err) {
+      setError(humanizeFirebaseError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <ClosedNotebookAuthLayout>
-      <style>{`
-        .auth-form {
-          width: 100%;
-          max-width: 340px;
-          text-align: center;
-        }
+      <h1 style={titleStyle}>Create your notebook</h1>
+      <p style={copyStyle}>Start tracking tasks in under a minute.</p>
 
-        .auth-title {
-          font-family: "Newsreader", serif;
-          font-size: clamp(2rem, 3vw, 2.55rem);
-          font-weight: 600;
-          color: #3e342d;
-          margin-bottom: 10px;
-          letter-spacing: -0.02em;
-        }
+      {!configured && (
+        <p style={warningStyle}>
+          Firebase isn't configured. Copy <code>frontend/.env.example</code> to <code>frontend/.env</code> and fill in the values.
+        </p>
+      )}
 
-        .auth-subtitle {
-          font-size: 1rem;
-          color: #6b564a;
-          margin-bottom: 28px;
-          line-height: 1.65;
-        }
-
-        .field {
-          margin-bottom: 16px;
-          text-align: left;
-        }
-
-        .field-label {
-          display: block;
-          font-size: 0.78rem;
-          font-weight: 700;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
-          color: #5a463d;
-          margin-bottom: 7px;
-          font-family: "Manrope", sans-serif;
-        }
-
-        .field-input {
-          width: 100%;
-          padding: 12px 14px;
-          border: 1px solid rgba(72, 57, 49, 0.24);
-          border-radius: 10px;
-          background: rgba(255, 252, 247, 0.94);
-          color: #3e342d;
-          font-family: "Patrick Hand", cursive;
-          font-size: 1.18rem;
-          outline: none;
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);
-        }
-
-        .field-input:focus {
-          border-color: #8b6e63;
-          background: #fff;
-          box-shadow: 0 0 0 4px rgba(208, 143, 88, 0.12);
-        }
-
-        .field-input.error {
-          border-color: #cc6b5f;
-        }
-
-        .field-error {
-          margin-top: 6px;
-          color: #cc6b5f;
-          font-size: 0.78rem;
-          line-height: 1.35;
-        }
-
-        .toggle-pw {
-          position: absolute;
-          right: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          background: none;
-          border: none;
-          color: #6b564a;
-          cursor: pointer;
-          font-size: 0.76rem;
-          font-weight: 700;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-        }
-
-        .field-wrap {
-          position: relative;
-        }
-
-        .submit-btn {
-          width: 100%;
-          padding: 13px 16px;
-          border-radius: 999px;
-          border: none;
-          background: linear-gradient(135deg, #d08f58, #c5655d);
-          color: #fffaf4;
-          font-family: "Manrope", sans-serif;
-          font-size: 0.96rem;
-          font-weight: 700;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          cursor: pointer;
-          margin-top: 18px;
-          box-shadow: 0 14px 24px rgba(169, 99, 69, 0.24);
-        }
-
-        .submit-btn:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        .error-msg {
-          margin-top: 16px;
-          padding: 10px 12px;
-          border-radius: 10px;
-          background: rgba(204, 107, 95, 0.1);
-          border: 1px solid rgba(204, 107, 95, 0.3);
-          color: #cc6b5f;
-          font-size: 0.82rem;
-          line-height: 1.45;
-          text-align: center;
-        }
-
-        .auth-links {
-          margin-top: 22px;
-          font-size: 0.86rem;
-          color: #6b564a;
-          line-height: 1.8;
-        }
-
-        .auth-link {
-          color: #8b6e63;
-          text-decoration: none;
-          font-weight: 700;
-        }
-
-        .auth-link:hover {
-          color: #5f473d;
-        }
-
-        .form-divider {
-          width: 100%;
-          height: 1px;
-          margin: 20px 0 0;
-          background: linear-gradient(90deg, transparent, rgba(104, 81, 68, 0.24), transparent);
-        }
-      `}</style>
-      <form className="auth-form" onSubmit={handleRegister} noValidate>
-        <div className="auth-title">Create account</div>
-        <div className="auth-subtitle">
-          Write your details on the notebook label to create your workspace, then confirm the code sent to your email.
-        </div>
-        <div className="field">
-          <label className="field-label">Name</label>
+      <form onSubmit={handleSubmit} style={formStyle}>
+        <label style={fieldStyle}>
+          <span style={labelStyle}>Name</span>
           <input
-            className={`field-input ${fieldErrors.name ? "error" : ""}`}
             type="text"
-            placeholder="Your full name"
             value={name}
             onChange={(event) => setName(event.target.value)}
+            required
             autoComplete="name"
+            style={inputStyle}
           />
-          {fieldErrors.name && <div className="field-error">{fieldErrors.name}</div>}
-        </div>
-        <div className="field">
-          <label className="field-label">Email</label>
+        </label>
+
+        <label style={fieldStyle}>
+          <span style={labelStyle}>Email</span>
           <input
-            className={`field-input ${fieldErrors.email ? "error" : ""}`}
             type="email"
-            placeholder="you@example.com"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
+            required
             autoComplete="email"
+            style={inputStyle}
           />
-          {fieldErrors.email && <div className="field-error">{fieldErrors.email}</div>}
-        </div>
-        <div className="field">
-          <label className="field-label">Password</label>
-          <div className="field-wrap">
-            <input
-              className={`field-input ${fieldErrors.password ? "error" : ""}`}
-              type={showPassword ? "text" : "password"}
-              placeholder="At least 8 characters"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete="new-password"
-            />
-            <button
-              type="button"
-              className="toggle-pw"
-              onClick={() => setShowPassword((value) => !value)}
-              aria-label="Toggle password visibility"
-            >
-              {showPassword ? "Hide" : "Show"}
-            </button>
-          </div>
-          {fieldErrors.password && <div className="field-error">{fieldErrors.password}</div>}
-        </div>
-        <button className="submit-btn" type="submit" disabled={loading}>
-          {loading ? "Creating account..." : "Create account"}
+        </label>
+
+        <label style={fieldStyle}>
+          <span style={labelStyle}>Password</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+            minLength={6}
+            autoComplete="new-password"
+            style={inputStyle}
+          />
+        </label>
+
+        {error && <p style={errorStyle}>{error}</p>}
+
+        <button type="submit" disabled={submitting || !configured} style={submitStyle}>
+          {submitting ? "Creating…" : "Create account"}
         </button>
-        {error && <div className="error-msg">{error}</div>}
-        <div className="form-divider" aria-hidden="true" />
-        <div className="auth-links">
-          Already have an account? <Link to="/" className="auth-link">Sign in</Link>
-        </div>
       </form>
+
+      <p style={linkRowStyle}>
+        Already have one? <Link to="/login" style={linkStyle}>Sign in</Link>
+      </p>
     </ClosedNotebookAuthLayout>
   );
 }
+
+const titleStyle: React.CSSProperties = { fontFamily: "Newsreader, serif", fontSize: "1.9rem", marginBottom: 4, color: "#3e342d" };
+const copyStyle: React.CSSProperties = { marginBottom: 20, color: "#6f5b4f" };
+const formStyle: React.CSSProperties = { display: "grid", gap: 14, width: "100%" };
+const fieldStyle: React.CSSProperties = { display: "grid", gap: 6 };
+const labelStyle: React.CSSProperties = { fontSize: ".78rem", letterSpacing: ".12em", textTransform: "uppercase", color: "#7c675a" };
+const inputStyle: React.CSSProperties = { border: "1px solid rgba(107,82,66,.18)", background: "rgba(255,251,244,.86)", color: "#4d3b31", borderRadius: 12, padding: "12px 14px", font: "inherit" };
+const submitStyle: React.CSSProperties = { border: 0, borderRadius: 14, background: "linear-gradient(135deg,#d08f58,#c5655d)", color: "#fffaf4", padding: "12px 16px", cursor: "pointer", marginTop: 8, font: "inherit" };
+const errorStyle: React.CSSProperties = { background: "rgba(197,101,93,.12)", color: "#8f3d36", padding: "10px 12px", borderRadius: 10, fontSize: ".92rem" };
+const warningStyle: React.CSSProperties = { background: "rgba(232,203,151,.28)", color: "#7c5a2a", padding: "10px 12px", borderRadius: 10, fontSize: ".88rem", marginBottom: 12 };
+const linkRowStyle: React.CSSProperties = { marginTop: 18, color: "#6f5b4f" };
+const linkStyle: React.CSSProperties = { color: "#8b4b3e", textDecoration: "none", fontWeight: 600 };

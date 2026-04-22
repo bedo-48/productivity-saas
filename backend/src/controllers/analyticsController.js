@@ -7,11 +7,27 @@ export const getStats = async (req, res) => {
       `SELECT
         COUNT(*) FILTER (WHERE completed = false AND archived = false) AS active_tasks,
         COUNT(*) FILTER (WHERE completed = true) AS completed_tasks,
-        COUNT(*) FILTER (WHERE completed = true AND updated_at > NOW() - INTERVAL '7 days') AS completed_this_week,
+        COUNT(*) FILTER (
+          WHERE completed = true
+            AND COALESCE(completed_at, updated_at) > NOW() - INTERVAL '7 days'
+        ) AS completed_this_week,
         COUNT(*) FILTER (WHERE completed = false AND archived = false AND created_at < NOW() - INTERVAL '7 days') AS stale_tasks,
-        COALESCE(AVG(
-          EXTRACT(EPOCH FROM (updated_at - created_at)) / 3600
-        ) FILTER (WHERE completed = true AND updated_at > NOW() - INTERVAL '30 days'), 0) AS avg_completion_hours
+        COUNT(*) FILTER (
+          WHERE completed = true
+            AND completed_at IS NOT NULL
+            AND completed_at > NOW() - INTERVAL '30 days'
+        ) AS finish_samples_30d,
+        AVG(
+          GREATEST(
+            0,
+            EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600
+          )
+        ) FILTER (
+          WHERE completed = true
+            AND completed_at IS NOT NULL
+            AND completed_at > NOW() - INTERVAL '30 days'
+            AND completed_at >= created_at
+        ) AS avg_completion_hours
        FROM tasks WHERE user_id = $1`,
       [userId]
     );

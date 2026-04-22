@@ -46,7 +46,8 @@ type Stats = {
   completed_tasks: string;
   completed_this_week: string;
   stale_tasks: string;
-  avg_completion_hours: string;
+  avg_completion_hours: string | null;
+  finish_samples_30d?: string;
 };
 
 function requireApiBase(): string {
@@ -62,11 +63,8 @@ function requireApiBase(): string {
 
 async function buildHeaders(explicitToken?: string): Promise<Record<string, string>> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  // Explicit token wins (e.g. during one-off integration tests); otherwise
-  // always grab a fresh Firebase ID token so expired tokens self-heal.
-  const token = explicitToken && explicitToken !== "demo-token"
-    ? explicitToken
-    : await getFreshIdToken();
+  const token =
+    explicitToken && explicitToken !== "demo-token" ? explicitToken : await getFreshIdToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
 }
@@ -101,101 +99,6 @@ async function requestJson<T>(
   }
   return data as T;
 }
-
-// ─────────────────────────────────────────────────────────────
-// Legacy /auth/* endpoints
-//
-// The Firebase-based auth flow lives entirely on the frontend now
-// (see src/pages/Login.tsx etc.), so these helpers are only kept as
-// thin pass-throughs for anyone still calling the old REST API.
-// They will work as long as the backend exposes them, but most of
-// the app shouldn't need them.
-// ─────────────────────────────────────────────────────────────
-
-export async function login(email: string, password: string) {
-  return requestJson<{ message: string; email: string; requiresCode: boolean }>(
-    `/auth/login`,
-    { method: "POST", body: JSON.stringify({ email, password }) },
-    "Login failed"
-  );
-}
-
-export async function verifyLoginCode(email: string, code: string) {
-  return requestJson<{
-    token: string;
-    message: string;
-    user: { id: number; name: string; email: string; emailVerified: boolean };
-  }>(
-    `/auth/verify-login-code`,
-    { method: "POST", body: JSON.stringify({ email, code }) },
-    "Code verification failed"
-  );
-}
-
-export async function resendLoginCode(email: string) {
-  return requestJson<{ message: string }>(
-    `/auth/resend-login-code`,
-    { method: "POST", body: JSON.stringify({ email }) },
-    "Failed to resend login code"
-  );
-}
-
-export async function register(name: string, email: string, password: string) {
-  return requestJson<{
-    token: string;
-    user: { id: number; name: string; email: string; emailVerified: boolean };
-  }>(
-    `/auth/register`,
-    { method: "POST", body: JSON.stringify({ name, email, password }) },
-    "Registration failed"
-  );
-}
-
-export async function verifyEmail(code: string, token?: string, email?: string) {
-  return requestJson<{ message: string }>(
-    `/auth/verify-email`,
-    { method: "POST", body: JSON.stringify({ code, email }), token },
-    "Verification failed"
-  );
-}
-
-export async function resendCode(token: string) {
-  return requestJson<{ message: string }>(
-    `/auth/resend-code`,
-    { method: "POST", token },
-    "Failed to resend code"
-  );
-}
-
-export async function forgotPassword(email: string) {
-  return requestJson<{ message: string; email: string }>(
-    `/auth/forgot-password`,
-    { method: "POST", body: JSON.stringify({ email }) },
-    "Failed to send reset code"
-  );
-}
-
-export async function sendVerification(email: string) {
-  return requestJson<{ message: string }>(
-    `/auth/send-verification`,
-    { method: "POST", body: JSON.stringify({ email }) },
-    "Failed to send verification code"
-  );
-}
-
-export async function resetPassword(email: string, code: string, newPassword: string, confirmPassword?: string) {
-  return requestJson<{ message: string }>(
-    `/auth/reset-password`,
-    { method: "POST", body: JSON.stringify({ email, code, newPassword, confirmPassword }) },
-    "Reset failed"
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// Tasks & analytics (all gated by Firebase ID token in buildHeaders)
-// The `_token` argument is retained for backward compatibility — the
-// real bearer is always a fresh Firebase ID token fetched on the fly.
-// ─────────────────────────────────────────────────────────────
 
 export async function getTasks(_token: string | undefined, status: "active" | "archived" | "shared" = "active") {
   return requestJson<Task[]>(`/tasks?status=${status}`, { method: "GET" }, "Failed to fetch tasks");

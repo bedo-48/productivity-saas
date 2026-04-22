@@ -5,11 +5,17 @@ const statements = [
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     email VARCHAR(150) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
+    password VARCHAR(255),
+    firebase_uid VARCHAR(128) UNIQUE,
     email_verified BOOLEAN DEFAULT false,
     avatar_url TEXT,
     created_at TIMESTAMP DEFAULT NOW()
   )`,
+  // Existing deployments: make password nullable (Firebase users have no local password)
+  // and add the firebase_uid column if it's missing.
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(128)`,
+  `ALTER TABLE users ALTER COLUMN password DROP NOT NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS uq_users_firebase_uid ON users(firebase_uid) WHERE firebase_uid IS NOT NULL`,
   `CREATE TABLE IF NOT EXISTS tasks (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -39,6 +45,9 @@ const statements = [
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority VARCHAR(10) DEFAULT 'medium'`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date TIMESTAMP`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP`,
+  // Approximate completion moment for existing rows (better than NULL for analytics).
+  `UPDATE tasks SET completed_at = updated_at WHERE completed = true AND completed_at IS NULL`,
   `CREATE TABLE IF NOT EXISTS task_shares (
     id SERIAL PRIMARY KEY,
     task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -65,6 +74,17 @@ const statements = [
     read BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT NOW()
   )`,
+  // ── Performance indexes (previously missing, called out in ARCHITECTURE_PLAN) ──
+  `CREATE INDEX IF NOT EXISTS idx_tasks_user_archived ON tasks(user_id, archived)`,
+  `CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date) WHERE due_date IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_verification_user ON email_verification_codes(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_verification_code ON email_verification_codes(code)`,
+  `CREATE INDEX IF NOT EXISTS idx_activity_task ON task_activity_log(task_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_activity_user ON task_activity_log(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_activity_created ON task_activity_log(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_task_shares_task ON task_shares(task_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_task_shares_user ON task_shares(shared_with_user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, read)`,
 ];
 
 export async function runMigrations() {

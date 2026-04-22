@@ -83,7 +83,10 @@ export const findTaskById = async (taskId) => {
 
 export const updateTaskCompleted = async (userId, taskId, completed) => {
   const result = await pool.query(
-    `UPDATE tasks SET completed = $1, updated_at = NOW()
+    `UPDATE tasks SET
+       completed = $1,
+       updated_at = NOW(),
+       completed_at = CASE WHEN $1 = true THEN NOW() ELSE NULL END
      WHERE id = $2 AND (user_id = $3 OR EXISTS (
        SELECT 1 FROM task_shares
        WHERE task_id = $2 AND shared_with_user_id = $3 AND permission = 'edit'
@@ -140,7 +143,10 @@ export const deleteTaskById = async (userId, taskId) => {
 
 export const toggleTaskCompleted = async (userId, taskId) => {
   const result = await pool.query(
-    `UPDATE tasks SET completed = NOT completed, updated_at = NOW()
+    `UPDATE tasks SET
+       completed = NOT completed,
+       updated_at = NOW(),
+       completed_at = CASE WHEN completed = false THEN NOW() ELSE NULL END
      WHERE user_id = $1 AND id = $2 RETURNING *`,
     [userId, taskId]
   );

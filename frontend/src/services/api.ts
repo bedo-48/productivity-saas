@@ -41,6 +41,16 @@ type Task = {
   collaborators?: { id: number; name: string; permission: string }[];
 };
 
+export type ActivityLogItem = {
+  id: number;
+  task_id: number;
+  task_title: string;
+  action: string;
+  actor_name: string;
+  details?: Record<string, unknown> | null;
+  created_at: string;
+};
+
 type Stats = {
   active_tasks: string;
   completed_tasks: string;
@@ -105,7 +115,7 @@ export async function getTasks(_token: string | undefined, status: "active" | "a
 }
 
 export async function getActivityLog(_token?: string) {
-  return requestJson<Task[]>(`/tasks/activity`, { method: "GET" }, "Failed to fetch activity log");
+  return requestJson<ActivityLogItem[]>(`/tasks/activity`, { method: "GET" }, "Failed to fetch activity log");
 }
 
 export async function createTask(

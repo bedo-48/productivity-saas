@@ -52,7 +52,7 @@ Dans Render → ton service backend → **"Environment"**, ajoute ces variables 
 
 | Clé | Valeur |
 |-----|--------|
-| `JWT_SECRET` | `415db21734ea470ff06f46b734743b56eed0ca3c7266727efe796d0520ec2c22bc998647ed9dfa083523396aad07f35ec703b4f55399ff695b014b21dfcf424d` |
+| `JWT_SECRET` | `<générer-avec : node -e "console.log(require('crypto').randomBytes(64).toString('hex'))">` |
 | `FRONTEND_URL` | `https://TON-APP.vercel.app` (ton URL Vercel) |
 | `SMTP_HOST` | `smtp.gmail.com` |
 | `SMTP_PORT` | `587` |

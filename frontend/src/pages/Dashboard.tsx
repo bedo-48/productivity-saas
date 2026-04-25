@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { io } from "socket.io-client";
 import {
   archiveTask,
   createTask,
@@ -15,10 +14,15 @@ import {
   toggleTask,
 } from "../services/api";
 import { useAuth } from "../auth/AuthContext";
-import { getFreshIdToken } from "../services/firebase";
+import {
+  connectSocket,
+  disconnectSocket,
+  joinTaskRoom,
+  syncTaskRooms,
+} from "../services/socket";
+import NotebookBackdrop from "../components/NotebookBackdrop";
 
-const SOCKET_URL = import.meta.env.VITE_API_URL || "";
-const USE_MOCK_DASHBOARD = !SOCKET_URL;
+const USE_MOCK_DASHBOARD = !import.meta.env.VITE_API_URL;
 const COMPLETE_STRIKE_MS = 700;
 const COMPLETE_FADE_MS = 850;
 const DELETE_FADE_MS = 320;
@@ -26,8 +30,8 @@ const PENCIL_ANIMATION_MS = 900;
 
 const DASHBOARD_STYLES = String.raw`
 @import url("https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&family=Patrick+Hand&family=Manrope:wght@400;500;600;700&display=swap");
-.dash-root{min-height:100vh;padding:28px 16px 56px;font-family:"Manrope",sans-serif;color:#3e342d;background:radial-gradient(circle at top left,rgba(196,177,145,.3),transparent 34%),radial-gradient(circle at right 18%,rgba(143,170,173,.18),transparent 28%),linear-gradient(180deg,#e7dcc7 0%,#d8c7ab 100%)}
-.dash-root *{box-sizing:border-box}.topbar,.productivity-panel,.dashboard-shell{width:min(100%,1180px);margin:0 auto}.topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:18px}.topbar-kicker,.notebook-kicker{margin:0 0 4px;font-size:.74rem;letter-spacing:.18em;text-transform:uppercase;color:#8b6e63}.topbar-logo{font-family:"Newsreader",serif;font-size:clamp(2rem,3vw,2.6rem);line-height:1;color:#483931}.logout-btn,.panel-toggle,.nav-link,.task-action,.add-btn,.share-submit,.modal-close,.task-check{font:inherit}.logout-btn{border:1px solid rgba(84,63,52,.18);background:rgba(255,248,236,.72);color:#5a463d;border-radius:999px;padding:10px 16px;cursor:pointer;box-shadow:0 10px 20px rgba(83,58,36,.08)}
+.dash-root{position:relative;min-height:100vh;padding:28px 16px 56px;font-family:"Manrope",sans-serif;color:#3e342d;background:radial-gradient(circle at top left,rgba(196,177,145,.3),transparent 34%),radial-gradient(circle at right 18%,rgba(143,170,173,.18),transparent 28%),linear-gradient(180deg,#e7dcc7 0%,#d8c7ab 100%)}
+.dash-root *{box-sizing:border-box}.topbar,.productivity-panel,.dashboard-shell{position:relative;z-index:1;width:min(100%,1180px);margin:0 auto}.topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:18px}.topbar-kicker,.notebook-kicker{margin:0 0 4px;font-size:.74rem;letter-spacing:.18em;text-transform:uppercase;color:#8b6e63}.topbar-logo{font-family:"Newsreader",serif;font-size:clamp(2rem,3vw,2.6rem);line-height:1;color:#483931}.logout-btn,.panel-toggle,.nav-link,.task-action,.add-btn,.share-submit,.modal-close,.task-check{font:inherit}.logout-btn{border:1px solid rgba(84,63,52,.18);background:rgba(255,248,236,.72);color:#5a463d;border-radius:999px;padding:10px 16px;cursor:pointer;box-shadow:0 10px 20px rgba(83,58,36,.08)}
 .productivity-panel,.dashboard-menu{border-radius:28px;padding:22px;border:1px solid rgba(121,97,81,.12);background:rgba(249,243,232,.74);box-shadow:0 16px 34px rgba(115,92,69,.12);backdrop-filter:blur(10px)}.productivity-panel{margin-bottom:24px}.panel-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;border:0;background:transparent;color:#6b564a;padding:0;cursor:pointer;font-weight:600}.stats-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:18px}.stat-card,.activity-card,.section-card{border-radius:18px;padding:16px;background:rgba(255,251,244,.82);border:1px solid rgba(121,97,81,.08)}.stat-num{font-family:"Newsreader",serif;font-size:2rem;line-height:1}.stat-label{margin-top:6px;font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:#877265}.insight-block{margin-top:14px;padding:14px 16px;border-radius:16px;border-left:3px solid}.insight-block.warning{background:rgba(232,203,151,.26);border-left-color:#c89c53}.insight-block.info{background:rgba(168,192,198,.18);border-left-color:#78939b}.insight-title{margin-bottom:8px;font-weight:700;color:#59463d}.insight-list{margin:0;padding-left:18px;display:grid;gap:6px;color:#685349}.insight-age{margin-left:6px;color:#8c7568}.panel-loading{width:min(100%,1180px);margin:0 auto 24px;color:#7d685c}
 .dashboard-shell{display:grid;grid-template-columns:240px minmax(0,1fr);gap:22px;align-items:start}.dashboard-menu{position:sticky;top:28px}.menu-title{font-family:"Newsreader",serif;font-size:1.4rem;margin-bottom:8px}.menu-copy,.section-copy{color:#7c675a;line-height:1.55}.menu-copy{font-size:.95rem;margin-bottom:18px}.menu-nav{display:grid;gap:10px}.nav-link{border:1px solid rgba(109,84,68,.12);background:rgba(255,251,244,.82);color:#6a5446;padding:14px;border-radius:20px;cursor:pointer;text-align:left}.nav-link.active{background:rgba(243,230,210,.96);box-shadow:0 10px 18px rgba(112,87,62,.1)}.nav-link-title{font-weight:700;color:#4a3a31}.nav-link-sub{margin-top:4px;font-size:.84rem;color:#7f695d}
 .notebook-panel{display:grid;grid-template-columns:96px minmax(0,1fr);gap:18px}.pencil-decoration{position:sticky;top:36px;display:flex;justify-content:center;padding-top:42px}.pencil{position:relative;width:24px;height:240px;transform:rotate(18deg);filter:drop-shadow(0 18px 18px rgba(102,75,52,.18))}.pencil-shadow{position:absolute;inset:56px 24px 0;border-radius:999px;background:rgba(72,57,49,.08);filter:blur(14px)}.pencil-eraser,.pencil-band,.pencil-body,.pencil-tip,.pencil-lead{position:absolute;left:50%;transform:translateX(-50%);display:block}.pencil-eraser{top:0;width:18px;height:22px;background:linear-gradient(180deg,#f0a7a6,#d68483);border-radius:10px 10px 6px 6px}.pencil-band{top:20px;width:20px;height:14px;background:linear-gradient(180deg,#d2d5d9,#aab0b8)}.pencil-body{top:34px;width:18px;height:168px;border-radius:10px;background:linear-gradient(180deg,#f3ca67,#d99f2b)}.pencil-tip{bottom:18px;width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-top:28px solid #c49d72}.pencil-lead{bottom:0;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:18px solid #57453b}.pencil-decoration.is-writing .pencil{animation:pencil-sweep .9s cubic-bezier(.22,1,.36,1)}@keyframes pencil-sweep{0%{transform:translate(-4px,0) rotate(18deg)}35%{transform:translate(26px,8px) rotate(12deg)}75%{transform:translate(10px,-2px) rotate(20deg)}100%{transform:translate(0,0) rotate(18deg)}}
@@ -35,6 +39,30 @@ const DASHBOARD_STYLES = String.raw`
 .task-list,.activity-feed{display:grid;gap:0}.task-paper,.skeleton{min-height:82px}.task-paper{position:relative;padding:14px 0 16px;border-bottom:1px solid rgba(102,141,178,.18);transition:background .28s ease,opacity .28s ease,transform .28s ease,filter .28s ease}.task-paper.age-fresh{background:linear-gradient(90deg,rgba(214,236,224,.4),transparent 52%)}.task-paper.age-normal{background:linear-gradient(90deg,rgba(248,244,236,.32),transparent 50%)}.task-paper.age-aging{background:linear-gradient(90deg,rgba(245,228,196,.48),transparent 55%)}.task-paper.age-stale{background:linear-gradient(90deg,rgba(242,212,188,.58),transparent 58%)}.task-paper.age-critical{background:linear-gradient(90deg,rgba(241,208,201,.65),transparent 60%)}.task-paper.age-done{background:linear-gradient(90deg,rgba(232,228,220,.42),transparent 50%)}.task-paper.task-shared{border-bottom-color:rgba(90,120,118,.26);background:linear-gradient(90deg,rgba(218,232,228,.48),rgba(252,247,236,.38) 42%,transparent 72%)}.task-paper.task-shared.age-fresh{background:linear-gradient(90deg,rgba(198,228,218,.52),rgba(248,243,232,.32) 48%,transparent 76%)}.task-paper.task-shared.age-critical{background:linear-gradient(90deg,rgba(236,214,206,.55),rgba(220,236,232,.22) 38%,transparent 76%)}.share-perm{display:inline-flex;align-items:center;border-radius:999px;padding:4px 11px;font-size:.72rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase}.share-perm-view{background:rgba(88,118,112,.12);color:#2f4a44;border:1px solid rgba(88,118,112,.26)}.share-perm-edit{background:rgba(168,118,72,.14);color:#5a3d22;border:1px solid rgba(168,118,72,.3)}.task-paper::before{content:"";position:absolute;left:-26px;top:22px;width:10px;height:10px;border-radius:50%;background:rgba(207,180,152,.58)}.task-line{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:start}.task-check{margin-top:5px;width:20px;height:20px;border-radius:50%;border:1.5px solid rgba(120,95,79,.5);background:rgba(255,250,242,.72);cursor:pointer}.task-check.checked{background:radial-gradient(circle at 50% 50%,#c5655d 0 45%,rgba(197,101,93,.16) 46% 100%);border-color:#c5655d}.task-body{min-width:0}.task-title-wrap{position:relative;display:inline-block;max-width:100%}.task-title-text{display:inline-block;max-width:100%;font-family:"Patrick Hand",cursive;font-size:clamp(1.35rem,2vw,1.6rem);line-height:1.15;color:#3f3028;word-break:break-word}.task-strike{position:absolute;left:-2px;right:-2px;top:55%;height:1.5px;border-radius:999px;background:#7d5d4b;transform:scaleX(0);transform-origin:left center;opacity:0}.task-desc{margin-top:4px;display:block;color:#7c675a}.task-meta{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px 14px;font-size:.86rem;color:#846e61}.priority-chip{display:inline-flex;align-items:center;gap:7px;text-transform:capitalize}.priority-dot{width:8px;height:8px;border-radius:50%;display:inline-block}.priority-dot.small{margin-left:8px}.task-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-items:center;max-width:240px}.task-age{font-size:.78rem;color:#8d786b}.task-action{border:0;background:rgba(240,229,211,.7);color:#6c5547;border-radius:999px;padding:8px 12px;cursor:pointer}.delete-action:hover{background:rgba(216,111,100,.16);color:#9f4039}.task-paper.is-new .task-title-text{animation:task-write-in .9s cubic-bezier(.22,1,.36,1)}.task-paper.is-new::after{content:"";position:absolute;left:34px;right:170px;top:20px;height:24px;background:linear-gradient(90deg,rgba(241,207,145,.36),rgba(241,207,145,0));animation:ink-sheen .95s ease-out}.task-paper.is-completing .task-strike{opacity:1;animation:strike-through .7s ease forwards}.task-paper.is-completing .task-title-text{color:#8f7b6e}.task-paper.is-exiting{opacity:0;filter:blur(2px);transform:translateX(16px) translateY(8px)}@keyframes task-write-in{0%{opacity:0;transform:translateY(8px) scale(.98);clip-path:inset(0 100% 0 0)}55%{opacity:1;clip-path:inset(0 12% 0 0)}100%{opacity:1;transform:translateY(0) scale(1);clip-path:inset(0 0 0 0)}}@keyframes ink-sheen{0%{opacity:0;transform:translateX(-24px)}30%{opacity:1}100%{opacity:0;transform:translateX(42px)}}@keyframes strike-through{0%{transform:scaleX(0)}100%{transform:scaleX(1)}}.activity-card{margin-bottom:12px}.activity-title{font-weight:700;color:#4a3a31}.activity-meta{margin-top:6px;color:#80695d;font-size:.92rem}.activity-badge{display:inline-flex;margin-top:10px;border-radius:999px;padding:6px 10px;background:rgba(208,143,88,.14);color:#87562f;font-size:.8rem;text-transform:capitalize}.empty-state{text-align:center;padding:42px 0 18px;color:#816a5e}.empty-icon{display:block;margin-bottom:10px;font-family:"Patrick Hand",cursive;font-size:2rem;color:#ae9385}.skeleton{border-radius:18px;background:linear-gradient(90deg,rgba(255,251,244,.4),rgba(245,236,221,.86),rgba(255,251,244,.4));background-size:220% 100%;animation:skeleton-pulse 1.3s ease infinite}@keyframes skeleton-pulse{0%{background-position:100% 0}100%{background-position:-100% 0}}
 .modal-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(68,48,34,.32);backdrop-filter:blur(8px);z-index:20}.modal-box{width:min(100%,420px);padding:28px;border-radius:28px;background:#fbf5eb;border:1px solid rgba(106,84,71,.12);box-shadow:0 24px 50px rgba(95,69,52,.16)}.modal-header{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:8px;font-family:"Newsreader",serif;font-size:1.5rem}.modal-close{width:34px;height:34px;border:0;border-radius:50%;background:rgba(121,97,81,.08);color:#5f4a3f;cursor:pointer}.modal-task-name{margin-bottom:18px;color:#80695d}.perm-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}.perm-btn{border-radius:16px;padding:12px;border:1px solid rgba(106,84,71,.12);background:rgba(255,251,244,.78);color:#715b4e;cursor:pointer;text-align:center}.perm-btn.active{border-color:rgba(88,118,112,.42);background:rgba(218,232,228,.52)}.share-success,.share-error{margin-bottom:12px}.share-success{color:#52715c}.share-error{color:#a34b45}
 @media (max-width:980px){.dashboard-shell{grid-template-columns:1fr}.dashboard-menu{position:relative;top:0}.notebook-panel{grid-template-columns:1fr}.pencil-decoration{position:relative;top:0;justify-content:flex-start;padding:0 0 6px 18px}.pencil{height:120px;transform:rotate(76deg)}}@media (max-width:720px){.stats-grid,.form-row,.task-line{grid-template-columns:1fr}.notebook-page{padding:28px 18px 26px 50px}.notebook-margin{left:30px}.task-paper::before{left:-15px}.task-actions{justify-content:flex-start;max-width:none}.topbar,.notebook-header{flex-direction:column;align-items:flex-start}}@media (max-width:520px){.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.perm-row{grid-template-columns:1fr}}
+
+/* ─── Polish layer: hovers, focus rings, transitions ──────────────── */
+.logout-btn,.add-btn,.share-submit,.task-action,.nav-link,.panel-toggle,.task-check,.modal-close,.perm-btn{transition:transform .12s ease,box-shadow .18s ease,background .18s ease,border-color .18s ease,color .18s ease,filter .18s ease}
+.logout-btn:hover{background:rgba(255,251,244,.95);border-color:rgba(84,63,52,.34);box-shadow:0 12px 22px rgba(83,58,36,.12)}
+.logout-btn:active{transform:translateY(1px)}
+.logout-btn:focus-visible,.task-action:focus-visible,.nav-link:focus-visible,.panel-toggle:focus-visible,.modal-close:focus-visible,.perm-btn:focus-visible{outline:2px solid rgba(197,101,93,.55);outline-offset:2px}
+.add-btn:hover:not(:disabled),.share-submit:hover:not(:disabled){filter:brightness(1.05);box-shadow:0 18px 28px rgba(169,99,69,.24),inset 0 1px 0 rgba(255,255,255,.32)}
+.add-btn:active:not(:disabled),.share-submit:active:not(:disabled){transform:translateY(1px)}
+.add-btn:focus-visible,.share-submit:focus-visible{outline:2px solid #fffdf7;outline-offset:2px}
+.task-input,.priority-select,.share-input{transition:border-color .18s ease,box-shadow .18s ease,background .18s ease}
+.task-input:hover,.priority-select:hover,.share-input:hover{border-color:rgba(107,82,66,.32)}
+.task-input:focus,.priority-select:focus,.share-input:focus{outline:none;border-color:rgba(197,101,93,.55);background:#fffdf7;box-shadow:0 0 0 3px rgba(197,101,93,.18)}
+.task-action:hover{background:rgba(232,217,191,.85);color:#4f3d31}
+.delete-action{color:#9f4039}
+.nav-link:hover{background:rgba(248,238,220,.96);border-color:rgba(109,84,68,.22)}
+.task-check:hover{border-color:rgba(197,101,93,.7);box-shadow:0 0 0 3px rgba(197,101,93,.12)}
+.task-check:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(197,101,93,.32)}
+.modal-close:hover{background:rgba(121,97,81,.18)}
+.perm-btn:hover{border-color:rgba(88,118,112,.32)}
+.task-paper:hover{background-color:rgba(255,251,244,.42)}
+@media (prefers-reduced-motion:reduce){
+  .logout-btn,.add-btn,.share-submit,.task-action,.nav-link,.panel-toggle,.task-check,.modal-close,.perm-btn,.task-input,.priority-select,.share-input,.task-paper{transition:none}
+  .pencil-decoration.is-writing .pencil,.task-paper.is-new .task-title-text,.task-paper.is-new::after,.task-paper.is-completing .task-strike{animation:none}
+}
 `;
 
 type Priority = "low" | "medium" | "high";
@@ -231,34 +259,75 @@ export default function Dashboard() {
     finally { setActivityLoading(false); }
   }, []);
 
+  // Load productivity insights once per mount.
+  useEffect(() => { void loadInsights(); }, [loadInsights]);
+
+  // Cleanup pending UI timeouts on unmount.
   useEffect(() => {
-    void loadInsights();
-    if (USE_MOCK_DASHBOARD || !user) {
-      return () => {
-        timeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
-        timeoutsRef.current = [];
-      };
-    }
+    return () => {
+      timeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      timeoutsRef.current = [];
+    };
+  }, []);
+
+  // Refs let socket listeners always read the latest section / callbacks
+  // without needing to rebind the listeners on every state change.
+  const sectionRef = useRef(section);
+  useEffect(() => { sectionRef.current = section; }, [section]);
+  const loadActivityRef = useRef(loadActivity);
+  useEffect(() => { loadActivityRef.current = loadActivity; }, [loadActivity]);
+  const loadTasksRef = useRef(loadTasks);
+  useEffect(() => { loadTasksRef.current = loadTasks; }, [loadTasks]);
+  const loadInsightsRef = useRef(loadInsights);
+  useEffect(() => { loadInsightsRef.current = loadInsights; }, [loadInsights]);
+  const beginCompletionRef = useRef(beginCompletionSequence);
+  useEffect(() => { beginCompletionRef.current = beginCompletionSequence; }, [beginCompletionSequence]);
+  const removeTaskRef = useRef(removeTaskFromState);
+  useEffect(() => { removeTaskRef.current = removeTaskFromState; }, [removeTaskFromState]);
+
+  // Socket lifecycle — open once per signed-in user, listen to live events.
+  // Stays connected across tab switches; disconnects only when user signs out / unmounts.
+  useEffect(() => {
+    if (USE_MOCK_DASHBOARD || !user) return;
 
     let cancelled = false;
-    let socket: ReturnType<typeof io> | null = null;
 
     (async () => {
-      const socketToken = await getFreshIdToken();
-      if (cancelled || !socketToken) return;
-      socket = io(SOCKET_URL, { auth: { token: socketToken }, transports: ["websocket"] });
-      socket.on("task:updated", ({ task }: { task: Task }) => { setTasks((current) => current.map((item) => (item.id === task.id ? { ...item, ...task } : item))); if (section === "active" && task.completed) beginCompletionSequence(task.id); if (section === "activity") void loadActivity(); });
-      socket.on("task:deleted", ({ taskId }: { taskId: number }) => { removeTaskFromState(taskId); if (section === "activity") void loadActivity(); });
-      socket.on("task:shared", () => { void loadTasks("shared"); void loadInsights(); void loadActivity(); });
+      const socket = await connectSocket();
+      if (cancelled || !socket) return;
+
+      socket.on("task:updated", ({ task }: { task: Task }) => {
+        setTasks((current) => current.map((item) => (item.id === task.id ? { ...item, ...task } : item)));
+        if (sectionRef.current === "active" && task.completed) beginCompletionRef.current(task.id);
+        if (sectionRef.current === "activity") void loadActivityRef.current();
+      });
+
+      socket.on("task:deleted", ({ taskId }: { taskId: number }) => {
+        removeTaskRef.current(taskId);
+        if (sectionRef.current === "activity") void loadActivityRef.current();
+      });
+
+      socket.on("task:shared", ({ task }: { task: Task }) => {
+        // The collaborator joins the new task's room so they receive its future updates.
+        joinTaskRoom(task.id);
+        if (sectionRef.current === "shared") void loadTasksRef.current("shared");
+        void loadInsightsRef.current();
+        void loadActivityRef.current();
+      });
     })();
 
     return () => {
       cancelled = true;
-      if (socket) socket.disconnect();
-      timeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
-      timeoutsRef.current = [];
+      disconnectSocket();
     };
-  }, [beginCompletionSequence, loadActivity, loadInsights, loadTasks, navigate, removeTaskFromState, section, user]);
+  }, [user]);
+
+  // Whenever the visible task list changes, sync our joined Socket.IO rooms
+  // so we receive task:updated / task:deleted for exactly those tasks.
+  useEffect(() => {
+    if (USE_MOCK_DASHBOARD || !user) return;
+    syncTaskRooms(tasks.map((task) => task.id));
+  }, [tasks, user]);
 
   useEffect(() => { if (section === "activity") void loadActivity(); else void loadTasks(section); }, [loadActivity, loadTasks, section]);
 
@@ -283,6 +352,7 @@ export default function Dashboard() {
     <>
       <style>{DASHBOARD_STYLES}</style>
       <div className="dash-root">
+        <NotebookBackdrop palette="light" density={30} seed={9001} />
         <header className="topbar"><div><div className="topbar-kicker">Paper productivity</div><div className="topbar-logo">TaskLedger</div></div><button className="logout-btn" type="button" onClick={handleLogout}>Sign out</button></header>
         <ProductivityPanel stats={stats} neglected={neglected} suggestions={suggestions} loading={insightsLoading} />
         <div className="dashboard-shell">

@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import NotebookBackdrop from "./NotebookBackdrop";
 
 interface ClosedNotebookAuthLayoutProps {
   children: ReactNode;
@@ -422,6 +423,154 @@ export default function ClosedNotebookAuthLayout({ children, className = "" }: C
           opacity: 0;
         }
 
+        /* ─── Shared auth form chrome (used by Login + Register) ─────────── */
+        .auth-title {
+          font-family: "Newsreader", serif;
+          font-weight: 600;
+          font-size: clamp(1.7rem, 2.6vw, 2.05rem);
+          line-height: 1.1;
+          letter-spacing: -0.01em;
+          color: #3e342d;
+          margin: 0 0 6px;
+        }
+        .auth-copy {
+          margin: 0 0 22px;
+          color: #6f5b4f;
+          font-size: 0.95rem;
+          line-height: 1.45;
+        }
+        .auth-form {
+          display: grid;
+          gap: 14px;
+          width: 100%;
+        }
+        .auth-field {
+          display: grid;
+          gap: 6px;
+        }
+        .auth-label {
+          font-size: 0.74rem;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+          color: #7c675a;
+          font-weight: 600;
+        }
+        .auth-input {
+          width: 100%;
+          font: inherit;
+          color: #4d3b31;
+          background: rgba(255, 251, 244, 0.92);
+          border: 1px solid rgba(107, 82, 66, 0.18);
+          border-radius: 12px;
+          padding: 12px 14px;
+          transition: border-color 0.18s ease, box-shadow 0.18s ease,
+            background 0.18s ease;
+        }
+        .auth-input::placeholder {
+          color: #b3a094;
+        }
+        .auth-input:hover {
+          border-color: rgba(107, 82, 66, 0.32);
+        }
+        .auth-input:focus {
+          outline: none;
+          border-color: rgba(197, 101, 93, 0.55);
+          background: #fffdf7;
+          box-shadow: 0 0 0 3px rgba(197, 101, 93, 0.18);
+        }
+        .auth-input:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .auth-submit {
+          font: inherit;
+          font-weight: 600;
+          letter-spacing: 0.01em;
+          color: #fffaf4;
+          background: linear-gradient(135deg, #d08f58, #c5655d);
+          border: 0;
+          border-radius: 14px;
+          padding: 13px 18px;
+          margin-top: 6px;
+          cursor: pointer;
+          box-shadow: 0 10px 22px rgba(169, 99, 69, 0.22),
+            inset 0 1px 0 rgba(255, 255, 255, 0.32);
+          transition: transform 0.12s ease, box-shadow 0.18s ease,
+            filter 0.18s ease;
+        }
+        .auth-submit:hover:not(:disabled) {
+          filter: brightness(1.05);
+          box-shadow: 0 14px 26px rgba(169, 99, 69, 0.28),
+            inset 0 1px 0 rgba(255, 255, 255, 0.34);
+        }
+        .auth-submit:active:not(:disabled) {
+          transform: translateY(1px);
+          box-shadow: 0 6px 14px rgba(169, 99, 69, 0.22),
+            inset 0 1px 0 rgba(255, 255, 255, 0.32);
+        }
+        .auth-submit:focus-visible {
+          outline: 2px solid #fffdf7;
+          outline-offset: 2px;
+        }
+        .auth-submit:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+        .auth-error {
+          margin: 0;
+          background: rgba(197, 101, 93, 0.14);
+          color: #8f3d36;
+          padding: 10px 12px;
+          border-radius: 10px;
+          font-size: 0.9rem;
+          border-left: 3px solid rgba(197, 101, 93, 0.6);
+        }
+        .auth-warning {
+          margin: 0 0 14px;
+          background: rgba(232, 203, 151, 0.32);
+          color: #7c5a2a;
+          padding: 10px 12px;
+          border-radius: 10px;
+          font-size: 0.88rem;
+          border-left: 3px solid rgba(200, 156, 83, 0.6);
+        }
+        .auth-warning code {
+          background: rgba(255, 251, 244, 0.6);
+          padding: 1px 5px;
+          border-radius: 4px;
+          font-size: 0.85em;
+        }
+        .auth-link-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          margin-top: 18px;
+          width: 100%;
+          color: #6f5b4f;
+          font-size: 0.93rem;
+        }
+        .auth-link-row.center {
+          justify-content: center;
+        }
+        .auth-link {
+          color: #8b4b3e;
+          text-decoration: none;
+          font-weight: 600;
+          border-bottom: 1px solid transparent;
+          transition: border-color 0.15s ease, color 0.15s ease;
+        }
+        .auth-link:hover {
+          color: #6e3328;
+          border-bottom-color: rgba(110, 51, 40, 0.35);
+        }
+        .auth-link:focus-visible {
+          outline: 2px solid rgba(139, 75, 62, 0.55);
+          outline-offset: 3px;
+          border-radius: 2px;
+        }
+
         @media (max-width: 900px) {
           .desk-shadow {
             width: min(100%, 840px);
@@ -537,6 +686,7 @@ export default function ClosedNotebookAuthLayout({ children, className = "" }: C
         }
       `}</style>
       <div className={`auth-root ${className}`}>
+        <NotebookBackdrop palette="dark" density={28} seed={4242} />
         <div className="desk-paper one" aria-hidden="true" />
         <div className="desk-paper two" aria-hidden="true" />
         <div className="desk-paper three" aria-hidden="true" />

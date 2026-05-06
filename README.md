@@ -40,6 +40,6 @@ Every push and PR runs the [CI workflow](./.github/workflows/ci.yml):
 - **Frontend** — ESLint, TypeScript type-check, Vite production build
 - **Backend** — `node --check` syntax pass on every `.js` file under `src/` and `scripts/`
 
-## Screenshot
+## Screenshots
 
-![Dashboard](./screenshots-old/dashboard.png)
+A live dashboard is the best preview — see the [demo](https://productivity-saas-silk.vercel.app).

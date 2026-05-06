@@ -2,6 +2,7 @@ import { initializeApp, type FirebaseApp } from "firebase/app";
 import {
   getAuth,
   onIdTokenChanged,
+  signOut,
   type Auth,
   type User,
 } from "firebase/auth";
@@ -60,19 +61,83 @@ export function isFirebaseConfigured(): boolean {
 }
 
 /**
- * Get a fresh Firebase ID token for the currently signed-in user.
- * Forces a refresh if the token is within 5 minutes of expiry so that
- * long-running tabs don't hit 401s.
+ * Wait for Firebase Auth to finish restoring its persisted session.
+ *
+ * On a fresh page load, `auth.currentUser` is `null` for ~50–300ms while
+ * Firebase reads its IndexedDB cache. If we ask for a token in that
+ * window we get the empty string back, the request goes out without an
+ * Authorization header, and the backend returns 401 AUTH_HEADER_INVALID
+ * even though the user *is* signed in. This helper bridges that gap by
+ * subscribing once to onIdTokenChanged and resolving with whatever
+ * Firebase decides — capped at 3s so we never hang forever.
  */
-export async function getFreshIdToken(): Promise<string> {
-  const current = auth?.currentUser;
+let authReadyPromise: Promise<User | null> | null = null;
+function ensureAuthSettled(): Promise<User | null> {
+  if (!auth) return Promise.resolve(null);
+  if (auth.currentUser) return Promise.resolve(auth.currentUser);
+  if (authReadyPromise) return authReadyPromise;
+
+  authReadyPromise = new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: User | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      unsubscribe();
+      // Allow future calls to wait again if Firebase logs the user out and
+      // back in -- otherwise we'd cache a stale "null" forever.
+      authReadyPromise = null;
+      resolve(value);
+    };
+    const timer = window.setTimeout(() => finish(auth?.currentUser ?? null), 3000);
+    const unsubscribe = onIdTokenChanged(auth!, (user) => finish(user));
+  });
+  return authReadyPromise;
+}
+
+/**
+ * Get a Firebase ID token for the currently signed-in user.
+ *
+ * Pass `forceRefresh = true` to bypass the cache and ask Firebase for a
+ * brand-new token -- useful when the backend just rejected the cached one
+ * with a `TOKEN_EXPIRED` / `TOKEN_INVALID_OR_EXPIRED` 401 (typically
+ * because tokens were revoked server-side, e.g. after a password change).
+ */
+export async function getFreshIdToken(forceRefresh = false): Promise<string> {
+  const current = await ensureAuthSettled();
   if (!current) return "";
   try {
-    return await current.getIdToken(/* forceRefresh */ false);
+    return await current.getIdToken(forceRefresh);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn("[firebase] Failed to fetch ID token", err);
     return "";
+  }
+}
+
+/**
+ * Sign the user out of Firebase and bounce them to /login.
+ *
+ * Called as a last resort by the API layer when even a force-refreshed
+ * token is rejected by the backend -- at that point the session really
+ * is dead and we have to ask the user to re-authenticate.
+ *
+ * Safe to call from outside the React tree: uses `window.location` so we
+ * don't depend on the router being mounted.
+ */
+let signOutInFlight = false;
+export async function signOutAndRedirect(reason: string = "expired"): Promise<void> {
+  if (signOutInFlight) return;
+  signOutInFlight = true;
+  try {
+    if (auth) await signOut(auth);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[firebase] sign-out failed", err);
+  }
+  if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    const target = `/login?reason=${encodeURIComponent(reason)}`;
+    window.location.assign(target);
   }
 }
 

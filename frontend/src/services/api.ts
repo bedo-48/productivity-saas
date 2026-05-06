@@ -1,4 +1,4 @@
-import { getFreshIdToken } from "./firebase";
+import { getFreshIdToken, signOutAndRedirect } from "./firebase";
 
 const API = import.meta.env.VITE_API_URL?.replace(/\/+$/, "");
 
@@ -71,10 +71,15 @@ function requireApiBase(): string {
   return API;
 }
 
-async function buildHeaders(explicitToken?: string): Promise<Record<string, string>> {
+async function buildHeaders(
+  explicitToken?: string,
+  forceRefresh = false
+): Promise<Record<string, string>> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const token =
-    explicitToken && explicitToken !== "demo-token" ? explicitToken : await getFreshIdToken();
+    explicitToken && explicitToken !== "demo-token"
+      ? explicitToken
+      : await getFreshIdToken(forceRefresh);
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
 }
@@ -83,27 +88,71 @@ async function readPayload(res: Response): Promise<ApiErrorPayload & Record<stri
   return res.json().catch(() => ({}));
 }
 
+/**
+ * Auth-failure codes the backend uses (see backend/src/middleware/authMiddleware.js).
+ * When we see one of these on a 401, we try once more with a freshly refreshed
+ * token before giving up and signing the user out.
+ */
+const RETRYABLE_AUTH_CODES = new Set([
+  "TOKEN_EXPIRED",
+  "TOKEN_INVALID_OR_EXPIRED",
+  "AUTH_HEADER_INVALID",
+]);
+
+async function networkErrorToApi(error: unknown): Promise<never> {
+  const details =
+    error instanceof Error ? error.message : "Network request failed before the server responded.";
+  throw new ApiError(
+    "Unable to reach the server. Check the API URL, backend status, or CORS configuration.",
+    0,
+    { code: "NETWORK_REQUEST_FAILED", details }
+  );
+}
+
 async function requestJson<T>(
   path: string,
   init: Omit<RequestInit, "headers"> & { headers?: Record<string, string>; token?: string },
   fallbackMessage: string
 ): Promise<T> {
   const base = requireApiBase();
-  const headers = { ...(await buildHeaders(init.token)), ...(init.headers ?? {}) };
+  const url = `${base}${path}`;
+
+  const doFetch = async (forceRefresh: boolean): Promise<Response> => {
+    const headers = {
+      ...(await buildHeaders(init.token, forceRefresh)),
+      ...(init.headers ?? {}),
+    };
+    return fetch(url, { ...init, headers });
+  };
 
   let res: Response;
   try {
-    res = await fetch(`${base}${path}`, { ...init, headers });
+    res = await doFetch(false);
   } catch (error) {
-    const details = error instanceof Error ? error.message : "Network request failed before the server responded.";
-    throw new ApiError(
-      "Unable to reach the server. Check the API URL, backend status, or CORS configuration.",
-      0,
-      { code: "NETWORK_REQUEST_FAILED", details }
-    );
+    await networkErrorToApi(error);
+    // unreachable — networkErrorToApi always throws
+    return undefined as never;
   }
 
-  const data = await readPayload(res);
+  let data = await readPayload(res);
+
+  // One-shot recovery on token-related 401s: force a refresh and retry once.
+  // If the second attempt is still 401, the session is truly dead — sign out
+  // and bounce to /login so the user can re-authenticate.
+  if (res.status === 401 && typeof data.code === "string" && RETRYABLE_AUTH_CODES.has(data.code)) {
+    try {
+      res = await doFetch(true);
+      data = await readPayload(res);
+    } catch (error) {
+      await networkErrorToApi(error);
+    }
+
+    if (res.status === 401) {
+      // Fire-and-forget: signOutAndRedirect navigates the page away.
+      void signOutAndRedirect("expired");
+    }
+  }
+
   if (!res.ok) {
     throw new ApiError(String(data.details || data.error || fallbackMessage), res.status, data);
   }

@@ -63,6 +63,15 @@ const DASHBOARD_STYLES = String.raw`
   .logout-btn,.add-btn,.share-submit,.task-action,.nav-link,.panel-toggle,.task-check,.modal-close,.perm-btn,.task-input,.priority-select,.share-input,.task-paper{transition:none}
   .pencil-decoration.is-writing .pencil,.task-paper.is-new .task-title-text,.task-paper.is-new::after,.task-paper.is-completing .task-strike{animation:none}
 }
+/* Toasts */
+.toast-stack{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:50;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:min(92vw,420px)}
+.toast{pointer-events:auto;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:14px;font-size:.92rem;line-height:1.35;box-shadow:0 14px 30px rgba(83,58,36,.18);border:1px solid;animation:toast-in .2s ease-out}
+.toast.error{background:#fff2ee;border-color:#e0aea3;color:#7a2c22}
+.toast.info{background:#eef4ee;border-color:#a9c4ad;color:#2f4a32}
+.toast-close{background:transparent;border:0;color:inherit;font-size:1.1rem;line-height:1;cursor:pointer;padding:0 2px;opacity:.7}
+.toast-close:hover{opacity:1}
+@keyframes toast-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+@media (prefers-reduced-motion:reduce){.toast{animation:none}}
 `;
 
 type Priority = "low" | "medium" | "high";
@@ -109,6 +118,29 @@ function formatAvgFinish(stats: Stats): string {
 }
 function priorityColor(priority: Priority) { return priority === "high" ? "#cc6b5f" : priority === "medium" ? "#c89c53" : "#6d9478"; }
 function getErrorMessage(error: unknown) { return error instanceof Error ? error.message : "Something went wrong"; }
+
+type Toast = { id: number; kind: "error" | "info"; message: string };
+
+function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: number) => void }) {
+  if (toasts.length === 0) return null;
+  return (
+    <div className="toast-stack" role="region" aria-live="polite">
+      {toasts.map((toast) => (
+        <div key={toast.id} className={`toast ${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"}>
+          <span>{toast.message}</span>
+          <button
+            type="button"
+            className="toast-close"
+            aria-label="Dismiss notification"
+            onClick={() => onDismiss(toast.id)}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 function ShareModal({ task, onClose }: { task: Task; onClose: () => void }) {
   const [email, setEmail] = useState("");
   const [permission, setPermission] = useState("view");
@@ -223,6 +255,7 @@ export default function Dashboard() {
   const [pencilActive, setPencilActive] = useState(false);
   const [completingTaskIds, setCompletingTaskIds] = useState<number[]>([]);
   const [exitingTasks, setExitingTasks] = useState<Record<number, TaskExitState>>({});
+  const [toasts, setToasts] = useState<Toast[]>([]);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -231,6 +264,23 @@ export default function Dashboard() {
   const timeoutsRef = useRef<number[]>([]);
 
   const rememberTimeout = useCallback((callback: () => void, delay: number) => { const timeoutId = window.setTimeout(callback, delay); timeoutsRef.current.push(timeoutId); return timeoutId; }, []);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
+
+  const notifyError = useCallback(
+    (error: unknown, fallback: string) => {
+      const message = getErrorMessage(error) || fallback;
+      // eslint-disable-next-line no-console
+      console.error(message, error);
+      const id = Date.now() + Math.floor(Math.random() * 1000);
+      setToasts((current) => [...current, { id, kind: "error", message }]);
+      rememberTimeout(() => dismissToast(id), 4500);
+    },
+    [dismissToast, rememberTimeout]
+  );
+
   const clearTaskEffects = useCallback((taskId: number) => { setCompletingTaskIds((current) => current.filter((id) => id !== taskId)); setExitingTasks((current) => { if (!(taskId in current)) return current; const next = { ...current }; delete next[taskId]; return next; }); }, []);
   const removeTaskFromState = useCallback((taskId: number) => { setTasks((current) => current.filter((task) => task.id !== taskId)); clearTaskEffects(taskId); }, [clearTaskEffects]);
   const beginExit = useCallback((taskId: number, exitState: TaskExitState, delay: number) => { setExitingTasks((current) => ({ ...current, [taskId]: exitState })); rememberTimeout(() => removeTaskFromState(taskId), delay); }, [rememberTimeout, removeTaskFromState]);
@@ -342,11 +392,11 @@ export default function Dashboard() {
       navigate("/login", { replace: true });
     }
   };
-  const handleAddTask = async (event: React.FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!title.trim()) return; setAdding(true); try { const newTask = await createTask(title.trim(), undefined, { priority }); setTasks((current) => [newTask, ...current]); setTitle(""); setRecentlyAddedTaskId(newTask.id); triggerPencil(); rememberTimeout(() => setRecentlyAddedTaskId((current) => (current === newTask.id ? null : current)), 1500); void loadInsights(); void loadActivity(); } catch (error) { console.error(error); } finally { setAdding(false); } };
-  const handleToggle = async (taskId: number, completed: boolean) => { try { await toggleTask(taskId, !completed); setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, completed: !completed } : task))); if (!completed && section === "active") beginCompletionSequence(taskId); else clearTaskEffects(taskId); void loadInsights(); void loadActivity(); } catch (error) { console.error(error); } };
-  const handleDelete = async (taskId: number) => { try { await deleteTask(taskId); beginExit(taskId, "deleting", DELETE_FADE_MS); void loadInsights(); void loadActivity(); } catch (error) { console.error(error); } };
-  const handleArchive = async (taskId: number) => { try { await archiveTask(taskId); beginExit(taskId, "archiving", DELETE_FADE_MS); void loadInsights(); void loadActivity(); } catch (error) { console.error(error); } };
-  const handleRestore = async (taskId: number) => { try { await restoreTask(taskId); beginExit(taskId, "restoring", DELETE_FADE_MS); void loadInsights(); void loadActivity(); } catch (error) { console.error(error); } };
+  const handleAddTask = async (event: React.FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!title.trim()) return; setAdding(true); try { const newTask = await createTask(title.trim(), undefined, { priority }); setTasks((current) => [newTask, ...current]); setTitle(""); setRecentlyAddedTaskId(newTask.id); triggerPencil(); rememberTimeout(() => setRecentlyAddedTaskId((current) => (current === newTask.id ? null : current)), 1500); void loadInsights(); void loadActivity(); } catch (error) { notifyError(error, "Couldn't add the task. Please try again."); } finally { setAdding(false); } };
+  const handleToggle = async (taskId: number, completed: boolean) => { try { await toggleTask(taskId, !completed); setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, completed: !completed } : task))); if (!completed && section === "active") beginCompletionSequence(taskId); else clearTaskEffects(taskId); void loadInsights(); void loadActivity(); } catch (error) { notifyError(error, "Couldn't update the task."); } };
+  const handleDelete = async (taskId: number) => { try { await deleteTask(taskId); beginExit(taskId, "deleting", DELETE_FADE_MS); void loadInsights(); void loadActivity(); } catch (error) { notifyError(error, "Couldn't delete the task."); } };
+  const handleArchive = async (taskId: number) => { try { await archiveTask(taskId); beginExit(taskId, "archiving", DELETE_FADE_MS); void loadInsights(); void loadActivity(); } catch (error) { notifyError(error, "Couldn't archive the task."); } };
+  const handleRestore = async (taskId: number) => { try { await restoreTask(taskId); beginExit(taskId, "restoring", DELETE_FADE_MS); void loadInsights(); void loadActivity(); } catch (error) { notifyError(error, "Couldn't restore the task."); } };
 
   return (
     <>
@@ -366,6 +416,7 @@ export default function Dashboard() {
         </div>
       </div>
       {shareTarget && <ShareModal task={shareTarget} onClose={() => setShareTarget(null)} />}
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </>
   );
 }

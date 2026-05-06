@@ -18,6 +18,11 @@ export default function Login() {
 
   const from = (location.state as { from?: string } | null)?.from ?? "/dashboard";
 
+  // Surface a friendly notice when we landed here because the API rejected
+  // our token (e.g. revoked after a password change). See signOutAndRedirect
+  // in services/firebase.ts.
+  const expired = new URLSearchParams(location.search).get("reason") === "expired";
+
   // If we land here already signed in, bounce to the dashboard.
   useEffect(() => {
     if (!initializing && user) navigate(from, { replace: true });
@@ -52,6 +57,12 @@ export default function Login() {
         <p className="auth-warning">
           Firebase isn't configured. Copy <code>frontend/.env.example</code> to{" "}
           <code>frontend/.env</code> and fill in the values.
+        </p>
+      )}
+
+      {expired && configured && (
+        <p className="auth-warning" role="status">
+          Your session has expired. Please sign in again.
         </p>
       )}
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import ClosedNotebookAuthLayout from "../components/ClosedNotebookAuthLayout";
+import HalfOpenNotebookAuthLayout from "../components/HalfOpenNotebookAuthLayout";
 import { useAuth } from "../auth/AuthContext";
 import { auth } from "../services/firebase";
 import { humanizeFirebaseError } from "../auth/firebaseErrors";
@@ -49,9 +49,10 @@ export default function Login() {
   }
 
   return (
-    <ClosedNotebookAuthLayout>
+    <HalfOpenNotebookAuthLayout>
+      <p className="auth-kicker">Sign in</p>
       <h1 className="auth-title">Welcome back</h1>
-      <p className="auth-copy">Sign in to get back to your notebook.</p>
+      <p className="auth-copy">Open your notebook and pick up where you left off.</p>
 
       {!configured && (
         <p className="auth-warning">
@@ -113,6 +114,6 @@ export default function Login() {
           Create account
         </Link>
       </div>
-    </ClosedNotebookAuthLayout>
+    </HalfOpenNotebookAuthLayout>
   );
 }

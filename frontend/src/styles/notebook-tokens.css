@@ -1,0 +1,94 @@
+/*
+ * Notebook v2 — design tokens
+ * ---------------------------------------------------------------------------
+ * Single source of truth for colors, type, radii, shadows, and the ruled
+ * paper background. Imported once from main.tsx. New components and CSS
+ * files reference these variables instead of hard-coded values.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600;6..72,700&family=Patrick+Hand&family=Manrope:wght@400;500;600;700&display=swap");
+
+:root {
+  /* ── Paper & ink ─────────────────────────────────────────────────────── */
+  --nb-paper:        #fbf5eb;
+  --nb-paper-warm:   #f6ead2;
+  --nb-paper-edge:   #e7dcc7;
+  --nb-paper-deep:   #d8c7ab;
+  --nb-ink:          #3e342d;
+  --nb-ink-soft:     #6f5b4f;
+  --nb-ink-faint:    #8c7568;
+
+  /* ── Accents ─────────────────────────────────────────────────────────── */
+  --nb-terracotta:    #c5655d;
+  --nb-terracotta-2:  #d08f58;
+  --nb-gold:          #c89c53;
+  --nb-leaf:          #6d9478;
+  --nb-ink-blue:      #74a3c5;
+  --nb-margin-red:    rgba(205, 94, 111, 0.6);
+  --nb-rule-blue:     rgba(116, 157, 197, 0.20);
+
+  /* ── Cover (leather) ─────────────────────────────────────────────────── */
+  --nb-cover-dark:    #181718;
+  --nb-cover-mid:     #0d0d0e;
+  --nb-cover-kraft:   #b5874b;
+  --nb-cover-linen:   #e2d5b8;
+  --nb-spine-dark:    #242428;
+  --nb-spine-mid:     #4c4c51;
+
+  /* ── State ───────────────────────────────────────────────────────────── */
+  --nb-error-bg:   rgba(197, 101, 93, 0.14);
+  --nb-error-fg:   #8f3d36;
+  --nb-warn-bg:    rgba(232, 203, 151, 0.32);
+  --nb-warn-fg:    #7c5a2a;
+  --nb-success-bg: rgba(120, 147, 155, 0.18);
+  --nb-success-fg: #3c5a60;
+
+  /* ── Type ────────────────────────────────────────────────────────────── */
+  --nb-font-serif: "Newsreader", "Georgia", serif;
+  --nb-font-hand:  "Patrick Hand", "Caveat", cursive;
+  --nb-font-sans:  "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* ── Radii & shadows ─────────────────────────────────────────────────── */
+  --nb-radius-s:  10px;
+  --nb-radius-m:  16px;
+  --nb-radius-l:  22px;
+  --nb-radius-xl: 28px;
+
+  --nb-shadow-card:   0 14px 28px rgba(83, 58, 36, 0.12);
+  --nb-shadow-paper:  0 24px 60px rgba(109, 85, 58, 0.18),
+                      inset 0 1px 0 rgba(255, 255, 255, 0.70);
+  --nb-shadow-pop:    0 20px 38px rgba(95, 69, 52, 0.22);
+}
+
+/*
+ * Reusable backgrounds. Apply via class on any element to reuse the page
+ * surface without re-declaring all the layers.
+ */
+.nb-paper-surface {
+  background:
+    linear-gradient(180deg, rgba(255, 252, 245, 0.96), rgba(248, 240, 226, 0.95)),
+    repeating-linear-gradient(
+      180deg,
+      rgba(116, 157, 197, 0) 0,
+      rgba(116, 157, 197, 0) 39px,
+      var(--nb-rule-blue) 39px,
+      var(--nb-rule-blue) 41px
+    );
+  border: 1px solid rgba(106, 84, 71, 0.12);
+  box-shadow: var(--nb-shadow-paper);
+}
+
+.nb-page-margin {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 48px;
+  width: 2px;
+  background: linear-gradient(
+    180deg,
+    rgba(205, 94, 111, 0.45),
+    rgba(205, 94, 111, 0.75),
+    rgba(205, 94, 111, 0.45)
+  );
+  pointer-events: none;
+}

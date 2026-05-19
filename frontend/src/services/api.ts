@@ -1,4 +1,4 @@
-import { getFreshIdToken, signOutAndRedirect } from "./firebase";
+import { getFreshIdToken } from "./firebase";
 
 const API = import.meta.env.VITE_API_URL?.replace(/\/+$/, "");
 
@@ -147,10 +147,12 @@ async function requestJson<T>(
       await networkErrorToApi(error);
     }
 
-    if (res.status === 401) {
-      // Fire-and-forget: signOutAndRedirect navigates the page away.
-      void signOutAndRedirect("expired");
-    }
+    // NOTE: we used to auto-sign-out + redirect when the retry was still 401,
+    // but that turned out to be too aggressive: a misconfigured backend (bad
+    // service account, project mismatch, clock skew) makes *every* request
+    // 401, which would kick a perfectly-valid user back to /login on every
+    // dashboard mount. We now just let the error bubble up so the toast
+    // surfaces it and the user keeps their session.
   }
 
   if (!res.ok) {

@@ -5,7 +5,7 @@ import {
   sendEmailVerification,
   updateProfile,
 } from "firebase/auth";
-import ClosedNotebookAuthLayout from "../components/ClosedNotebookAuthLayout";
+import HalfOpenNotebookAuthLayout from "../components/HalfOpenNotebookAuthLayout";
 import { useAuth } from "../auth/AuthContext";
 import { auth } from "../services/firebase";
 import { humanizeFirebaseError } from "../auth/firebaseErrors";
@@ -54,7 +54,8 @@ export default function Register() {
   }
 
   return (
-    <ClosedNotebookAuthLayout>
+    <HalfOpenNotebookAuthLayout>
+      <p className="auth-kicker">Get started</p>
       <h1 className="auth-title">Create your notebook</h1>
       <p className="auth-copy">Start tracking tasks in under a minute.</p>
 
@@ -123,6 +124,6 @@ export default function Register() {
           Sign in
         </Link>
       </p>
-    </ClosedNotebookAuthLayout>
+    </HalfOpenNotebookAuthLayout>
   );
 }

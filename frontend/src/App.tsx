@@ -8,6 +8,10 @@ import ForgotPassword from "./pages/ForgotPassword";
 import VerifyEmail from "./pages/VerifyEmail";
 import VerifyCode from "./pages/VerifyCode";
 import ResetPassword from "./pages/ResetPassword";
+import Kanban from "./pages/Kanban";
+import CalendarView from "./pages/Calendar";
+import Focus from "./pages/Focus";
+import StatsPage from "./pages/Stats";
 
 function App() {
   return (
@@ -27,6 +31,38 @@ function App() {
             element={
               <ProtectedRoute>
                 <AppShell />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/kanban"
+            element={
+              <ProtectedRoute>
+                <Kanban />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/calendar"
+            element={
+              <ProtectedRoute>
+                <CalendarView />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/focus"
+            element={
+              <ProtectedRoute>
+                <Focus />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/stats"
+            element={
+              <ProtectedRoute>
+                <StatsPage />
               </ProtectedRoute>
             }
           />
